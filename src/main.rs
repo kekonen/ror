@@ -259,10 +259,10 @@ struct Cli {
     #[arg(short, long, action = clap::ArgAction::Count)]
     debug: u8,
 
-    #[arg(short, long, default_value = "0,0,0")]
+    #[arg(short, long, default_value = "255,0,129")]
     background: RgbX,
 
-    #[arg(short, long, default_value = "255,255,255")]
+    #[arg(short, long, default_value = "255,217,102")]
     color: RgbX,
 
     #[arg(short, long, default_value = "200")]
