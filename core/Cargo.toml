@@ -1,0 +1,13 @@
+[package]
+name = "ror-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rand = { version = "0.8", default-features = false }
+rand_chacha = { version = "0.3", default-features = false }
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+
+[features]
+default = ["std"]
+std = ["rand/std", "rand_chacha/std", "serde/std"]

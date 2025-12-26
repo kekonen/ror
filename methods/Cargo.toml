@@ -1,0 +1,14 @@
+[package]
+name = "methods"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+risc0-build = { version = "1.2.0" }
+
+[dependencies]
+ror-core = { path = "../core", default-features = false }
+risc0-zkvm = { workspace = true, default-features = false, features = ["std"] }
+
+[package.metadata.risc0]
+methods = ["guest"]

@@ -1,15 +1,12 @@
-[package]
-name = "ror"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = ["host", "core", "methods"]
+resolver = "2"
 
-# cargo run -- --background 255,0,129 --color 255,217,102
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-clap = { version = "4.5", features = ["derive"] }
-image = "0.25"
-ndarray = "0.17"
-rand = "0.9"
+[workspace.dependencies]
 alloy = "1.2.1"
 hex = "0.4"
+rand = { version = "0.8", default-features = false }
+rand_chacha = { version = "0.3", default-features = false }
+
+# risc0
+risc0-zkvm = { version = "1.2.0", default-features = false }
