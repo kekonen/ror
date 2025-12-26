@@ -271,16 +271,14 @@ impl Artist<Rgb<u8>> {
     fn mirror(&mut self) {
         let mut new_image =
             PixelImage::new(self.drawyer.image.width, self.drawyer.image.height, None);
-        for x in 0..self.drawyer.image.width {
+
+        for x in 0..self.drawyer.image.width / 2 {
             for y in 0..self.drawyer.image.height {
                 let pixel = self.drawyer.image.get_pixel(x, y).unwrap();
                 new_image.set_pixel(x, y, *pixel);
-                if x >= self.drawyer.image.width / 2 {
-                    let half_image = self.drawyer.image.width / 2;
-                    let mirrored_x = x - half_image;
-                    let mirrored_x = half_image - mirrored_x;
-                    new_image.set_pixel(mirrored_x, y, *pixel);
-                }
+
+                let mirrored_x = self.drawyer.image.width - x - 1;
+                new_image.set_pixel(mirrored_x, y, *pixel);
             }
         }
         self.drawyer.image = new_image;
@@ -307,10 +305,7 @@ impl Artist<Rgb<u8>> {
         }
     }
 
-    fn draw_random(&mut self) -> () {
-        let steps = 200;
-        let walks = 5;
-
+    fn draw_random(&mut self, steps: u64, walks: u64) -> () {
         for _ in 0..walks {
             self.drawyer.random_cursor();
             self.drawyer.draw(self.pixel);
@@ -499,7 +494,7 @@ fn main() {
         PixelImage::new(64, 64, Some(cli.background.to_rgb())),
     );
 
-    artist.draw_random();
+    artist.draw_random(cli.steps, cli.walks);
 
     artist.stamp(4);
 
