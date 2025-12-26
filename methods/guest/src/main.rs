@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use risc0_zkvm::guest::env;
-use ror_core::{derive_parameters, generate_rorschach_half, Pixel};
+use ror_core::{derive_parameters, generate_rorschach_binary};
 use k256::ecdsa::{SigningKey, VerifyingKey};
 use sha3::{Digest, Keccak256};
 
@@ -30,16 +30,15 @@ fn main() {
     // Derive generation parameters from private key
     let (walks, steps) = derive_parameters(&private_key);
 
-    // Define colors (hardcoded for now, could be public inputs)
-    let foreground = Pixel::new(255, 217, 102);
-    let background = Pixel::new(255, 0, 129);
-
-    // Generate the Rorschach half-canvas deterministically
-    let image = generate_rorschach_half(&private_key, walks, steps, foreground, background);
+    // Generate BINARY Rorschach pattern (no colors in proof!)
+    // This is 24x more efficient than RGB for ZK circuits
+    // Colors will be applied on the host side after verification
+    let binary_image = generate_rorschach_binary(&private_key, walks, steps);
 
     // Commit public outputs to the journal
+    // Note: binary image is only 256 bytes vs 6,144 bytes for RGB!
     env::commit(&address);
     env::commit(&walks);
     env::commit(&steps);
-    env::commit(&image.to_bytes());
+    env::commit(&binary_image.to_bytes()); // Only 256 bytes instead of 6,144!
 }

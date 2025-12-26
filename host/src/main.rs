@@ -4,7 +4,7 @@ use alloy::signers::local::PrivateKeySigner;
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
-use ror_core::{derive_parameters, generate_rorschach_half, Image32x64, Pixel};
+use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, BinaryImage32x64, Image32x64, Pixel};
 
 // Include the generated guest code
 use methods::{GUEST_ELF, GUEST_ID};
@@ -110,16 +110,17 @@ fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
 
     receipt.verify(GUEST_ID)?;
 
-    // Extract public outputs
+    // Extract public outputs (now includes binary image, not RGB!)
     let address: [u8; 20] = receipt.journal.decode()?;
     let walks: u64 = receipt.journal.decode()?;
     let steps: u64 = receipt.journal.decode()?;
-    let image_bytes: Vec<u8> = receipt.journal.decode()?;
+    let binary_bytes: Vec<u8> = receipt.journal.decode()?; // Binary image (256 bytes)
 
     println!("✓ Proof verified successfully!");
     println!("  Address: 0x{}", hex::encode(address));
     println!("  Parameters: walks={}, steps={}", walks, steps);
-    println!("  Image size: {} bytes", image_bytes.len());
+    println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_bytes.len());
+    println!("  (Colors can be applied freely after verification)");
 
     Ok(())
 }
@@ -261,15 +262,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cli.prove {
         let receipt = generate_proof(&private_key)?;
 
-        // Extract public outputs
+        // Extract public outputs (binary image, not RGB!)
         let address: [u8; 20] = receipt.journal.decode()?;
         let walks: u64 = receipt.journal.decode()?;
         let steps: u64 = receipt.journal.decode()?;
-        let _image_bytes: Vec<u8> = receipt.journal.decode()?;
+        let binary_bytes: Vec<u8> = receipt.journal.decode()?; // Binary image (256 bytes)
 
         println!("✓ Proof generated successfully!");
         println!("  Address: 0x{}", hex::encode(address));
         println!("  Parameters: walks={}, steps={}", walks, steps);
+        println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_bytes.len());
 
         // Save proof
         let proof_path = cli.output.with_extension("proof");
@@ -277,9 +279,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         fs::write(&proof_path, receipt_bytes)?;
         println!("  Proof saved to: {}", proof_path.display());
 
-        // Reconstruct and save image from proof
-        // TODO: Deserialize image_bytes back to Image32x64
+        // Convert binary image to RGB with user's chosen colors
+        let foreground = cli.color.to_pixel();
+        let background = cli.background.to_pixel();
+        let binary_image = BinaryImage32x64::from_bytes(&binary_bytes);
+        let half_image = binary_to_rgb(&binary_image, foreground, background);
+
+        // Mirror to full 64×64
+        let mut full_image = mirror_half_to_full(&half_image, background);
+
+        // Add stamps if requested
+        if !cli.no_stamp {
+            add_corner_stamps(
+                &mut full_image,
+                &private_key,
+                Rgb(foreground.to_rgb_array()),
+                Rgb(background.to_rgb_array()),
+                cli.stamp_offset
+            );
+        }
+
+        // Save final image
+        full_image.save(&cli.output)?;
         println!("  Image saved to: {}", cli.output.display());
+        println!("  (Colors applied after verification - can be changed freely!)");
 
         return Ok(());
     }
