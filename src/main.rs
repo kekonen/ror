@@ -2,8 +2,9 @@ use std::{marker::PhantomData, path::PathBuf, str::FromStr, u8};
 
 use clap::Parser;
 use image::{ImageBuffer, Pixel, Primitive, Rgb};
+use rand::distr::weighted::WeightedIndex;
+use rand::prelude::*;
 use rand::SeedableRng;
-use rand::{distributions, prelude::*};
 
 struct PixelImage<T> {
     width: u64,
@@ -246,7 +247,7 @@ impl Artist<Rgb<u8>> {
     }
 
     fn decide_direction(&mut self) -> Decision {
-        let distribution = distributions::WeightedIndex::new(&[
+        let distribution = WeightedIndex::new(&[
             self.left_probablity(),
             self.right_probablity(),
             self.up_probablity(),
@@ -412,7 +413,7 @@ fn reverse_transpose(data: [u64; 4]) -> [u8; 32] {
 
     for i in 0..4 {
         let offset = i * 8;
-        result[offset]     = (data[i] >> 56) as u8;
+        result[offset] = (data[i] >> 56) as u8;
         result[offset + 1] = (data[i] >> 48) as u8;
         result[offset + 2] = (data[i] >> 40) as u8;
         result[offset + 3] = (data[i] >> 32) as u8;
@@ -469,7 +470,7 @@ fn draw(val: u64) -> Vec<(u64, u64)> {
 }
 
 fn x(val: [u8; 32]) -> [Vec<(u64, u64)>; 4] {
-    let mut corners: [Vec<(u64, u64)>; 4] = [vec![], vec![], vec![], vec![], ];
+    let mut corners: [Vec<(u64, u64)>; 4] = [vec![], vec![], vec![], vec![]];
     let val = transpose(val);
 
     corners[0] = draw(val[0]);
@@ -481,11 +482,11 @@ fn x(val: [u8; 32]) -> [Vec<(u64, u64)>; 4] {
 
 fn main() {
     let cli = Cli::parse();
-    
+
     let seed: [u64; 4] = if let Some(seed) = cli.seed {
-        [seed,seed,seed,seed]
+        [seed, seed, seed, seed]
     } else {
-        rand::thread_rng().gen()
+        rand::rng().random()
     };
 
     let rng_seed = reverse_transpose(seed);

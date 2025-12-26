@@ -1,13 +1,13 @@
 [package]
 name = "ror"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
 # cargo run -- --background 255,0,129 --color 255,217,102
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = { version = "4.3.12", features = ["derive"] }
-image = "0.24.6"
-ndarray = "0.15.6"
-rand = "0.8.5"
+clap = { version = "4.5", features = ["derive"] }
+image = "0.25"
+ndarray = "0.17"
+rand = "0.9"
