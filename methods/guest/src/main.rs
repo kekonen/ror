@@ -40,5 +40,5 @@ fn main() {
     env::commit(&address);
     env::commit(&walks);
     env::commit(&steps);
-    env::commit(&binary_image.to_bytes()); // Only 256 bytes instead of 6,144!
+    env::commit(&binary_image); // Commit the struct directly, not Vec<u8>
 }

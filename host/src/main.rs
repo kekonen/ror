@@ -114,12 +114,12 @@ fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
     let address: [u8; 20] = receipt.journal.decode()?;
     let walks: u64 = receipt.journal.decode()?;
     let steps: u64 = receipt.journal.decode()?;
-    let binary_bytes: Vec<u8> = receipt.journal.decode()?; // Binary image (256 bytes)
+    let binary_image: BinaryImage32x64 = receipt.journal.decode()?; // Decode struct directly
 
     println!("✓ Proof verified successfully!");
     println!("  Address: 0x{}", hex::encode(address));
     println!("  Parameters: walks={}, steps={}", walks, steps);
-    println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_bytes.len());
+    println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_image.data.len());
     println!("  (Colors can be applied freely after verification)");
 
     Ok(())
@@ -266,12 +266,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let address: [u8; 20] = receipt.journal.decode()?;
         let walks: u64 = receipt.journal.decode()?;
         let steps: u64 = receipt.journal.decode()?;
-        let binary_bytes: Vec<u8> = receipt.journal.decode()?; // Binary image (256 bytes)
+        let binary_image: BinaryImage32x64 = receipt.journal.decode()?; // Decode struct directly
 
         println!("✓ Proof generated successfully!");
         println!("  Address: 0x{}", hex::encode(address));
         println!("  Parameters: walks={}, steps={}", walks, steps);
-        println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_bytes.len());
+        println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_image.data.len());
 
         // Save proof
         let proof_path = cli.output.with_extension("proof");
@@ -282,7 +282,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Convert binary image to RGB with user's chosen colors
         let foreground = cli.color.to_pixel();
         let background = cli.background.to_pixel();
-        let binary_image = BinaryImage32x64::from_bytes(&binary_bytes);
         let half_image = binary_to_rgb(&binary_image, foreground, background);
 
         // Mirror to full 64×64
