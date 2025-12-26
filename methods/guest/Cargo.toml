@@ -1,3 +1,6 @@
+[workspace]
+# Empty workspace declaration to prevent this package from inheriting parent workspace
+
 [package]
 name = "guest"
 version = "0.1.0"

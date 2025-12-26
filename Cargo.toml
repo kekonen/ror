@@ -1,5 +1,6 @@
 [workspace]
 members = ["host", "core", "methods"]
+exclude = ["methods/guest"]
 resolver = "2"
 
 [workspace.dependencies]

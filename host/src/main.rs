@@ -2,14 +2,12 @@ use std::{fs, path::PathBuf, str::FromStr};
 
 use alloy::signers::local::PrivateKeySigner;
 use clap::Parser;
-use image::{ImageBuffer, Pixel as ImagePixel, Rgb};
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
+use image::{ImageBuffer, Rgb};
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
 use ror_core::{derive_parameters, generate_rorschach_half, Image32x64, Pixel};
 
 // Include the generated guest code
-use methods::{GENERATE_IMAGE_ELF, GENERATE_IMAGE_ID};
+use methods::{GUEST_ELF, GUEST_ID};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -98,7 +96,8 @@ fn generate_proof(private_key: &[u8; 32]) -> Result<Receipt, Box<dyn std::error:
         .build()?;
 
     let prover = default_prover();
-    let receipt = prover.prove(env, GENERATE_IMAGE_ELF)?;
+    let prove_info = prover.prove(env, GUEST_ELF)?;
+    let receipt = prove_info.receipt;
 
     Ok(receipt)
 }
@@ -109,7 +108,7 @@ fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
     let receipt_bytes = fs::read(proof_path)?;
     let receipt: Receipt = bincode::deserialize(&receipt_bytes)?;
 
-    receipt.verify(GENERATE_IMAGE_ID)?;
+    receipt.verify(GUEST_ID)?;
 
     // Extract public outputs
     let address: [u8; 20] = receipt.journal.decode()?;
@@ -266,7 +265,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let address: [u8; 20] = receipt.journal.decode()?;
         let walks: u64 = receipt.journal.decode()?;
         let steps: u64 = receipt.journal.decode()?;
-        let image_bytes: Vec<u8> = receipt.journal.decode()?;
+        let _image_bytes: Vec<u8> = receipt.journal.decode()?;
 
         println!("✓ Proof generated successfully!");
         println!("  Address: 0x{}", hex::encode(address));
