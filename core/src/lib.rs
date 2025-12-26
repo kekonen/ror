@@ -81,6 +81,9 @@ pub fn derive_parameters(pk: &[u8; 32]) -> (u64, u64) {
 
 /// Generate Rorschach half-canvas (32×64) from private key
 /// This is the core deterministic function used in ZK proof
+///
+/// Uses virtual 64×64 coordinate system for drawing, but stores in 32×64 by mirroring
+/// coordinates at write time. This creates a cohesive centered pattern.
 pub fn generate_rorschach_half(
     private_key: &[u8; 32],
     walks: u64,
@@ -88,28 +91,37 @@ pub fn generate_rorschach_half(
     foreground: Pixel,
     background: Pixel,
 ) -> Image32x64 {
+    const VIRTUAL_WIDTH: u64 = 64; // Virtual drawing space
+    const PHYSICAL_WIDTH: u64 = 32; // Physical storage width
+    const HEIGHT: u64 = 64;
+
     let mut rng = ChaCha8Rng::from_seed(*private_key);
     let mut image = Image32x64::new(background);
 
-    // Generate centered pattern on left half
+    // Generate centered pattern using virtual 64-wide coordinate system
     for _ in 0..walks {
-        // Random starting position in center-left region
-        let left_margin = 32 / 8; // 4
-        let left_center_end = 3 * 32 / 8; // 12
-        let top_margin = 64 / 4; // 16
-        let bottom_margin = 3 * 64 / 4; // 48
+        // Random starting position in center region (virtual coordinates)
+        let left_margin = VIRTUAL_WIDTH / 4; // 16
+        let right_boundary = 3 * VIRTUAL_WIDTH / 4; // 48
+        let top_margin = HEIGHT / 4; // 16
+        let bottom_margin = 3 * HEIGHT / 4; // 48
 
-        let mut cursor_x = rng.gen_range(left_margin..left_center_end);
+        let mut cursor_x = rng.gen_range(left_margin..right_boundary);
         let mut cursor_y = rng.gen_range(top_margin..bottom_margin);
 
-        // Draw starting pixel
-        image.set_pixel(cursor_x, cursor_y, foreground);
+        // Draw starting pixel (with coordinate transformation)
+        let physical_x = if cursor_x >= PHYSICAL_WIDTH {
+            VIRTUAL_WIDTH - cursor_x - 1
+        } else {
+            cursor_x
+        };
+        image.set_pixel(physical_x, cursor_y, foreground);
 
         // Random walk
         for _ in 0..steps {
             let direction = decide_direction_fixed(&mut rng, cursor_x, cursor_y);
 
-            // Move cursor
+            // Move cursor (in virtual space)
             match direction {
                 Direction::Left => {
                     if cursor_x > left_margin {
@@ -117,7 +129,7 @@ pub fn generate_rorschach_half(
                     }
                 }
                 Direction::Right => {
-                    if cursor_x < left_center_end - 1 {
+                    if cursor_x < right_boundary - 1 {
                         cursor_x += 1;
                     }
                 }
@@ -133,8 +145,13 @@ pub fn generate_rorschach_half(
                 }
             }
 
-            // Draw pixel
-            image.set_pixel(cursor_x, cursor_y, foreground);
+            // Draw pixel (with coordinate transformation)
+            let physical_x = if cursor_x >= PHYSICAL_WIDTH {
+                VIRTUAL_WIDTH - cursor_x - 1
+            } else {
+                cursor_x
+            };
+            image.set_pixel(physical_x, cursor_y, foreground);
         }
     }
 
@@ -143,29 +160,31 @@ pub fn generate_rorschach_half(
 
 /// Deterministic direction decision using fixed-point arithmetic (no f32)
 /// Uses u32 instead of f32 for ZK efficiency
+/// Now uses VIRTUAL_WIDTH for probability calculations to work with virtual coordinate system
 fn decide_direction_fixed(rng: &mut ChaCha8Rng, cursor_x: u64, cursor_y: u64) -> Direction {
-    const WIDTH: u64 = 32;
+    const VIRTUAL_WIDTH: u64 = 64; // Virtual coordinate space
     const HEIGHT: u64 = 64;
     const SCALE: u32 = 1_000_000; // Fixed-point scale
 
-    let left_margin = WIDTH / 8;
-    let right_boundary = 3 * WIDTH / 8;
-    let top_margin = HEIGHT / 4;
-    let bottom_boundary = 3 * HEIGHT / 4;
+    let left_margin = VIRTUAL_WIDTH / 4; // 16
+    let right_boundary = 3 * VIRTUAL_WIDTH / 4; // 48
+    let top_margin = HEIGHT / 4; // 16
+    let bottom_boundary = 3 * HEIGHT / 4; // 48
 
     // Calculate probabilities as fixed-point u32 (scaled by 1,000,000)
+    // Use VIRTUAL_WIDTH for distance calculations
     let distance_from_left_margin = cursor_x.saturating_sub(left_margin);
-    let left_prob = if distance_from_left_margin >= WIDTH / 8 {
+    let left_prob = if distance_from_left_margin >= VIRTUAL_WIDTH / 4 {
         SCALE
     } else {
-        ((distance_from_left_margin * SCALE as u64) / (WIDTH / 8)) as u32
+        ((distance_from_left_margin * SCALE as u64) / (VIRTUAL_WIDTH / 4)) as u32
     };
 
     let distance_from_right = right_boundary.saturating_sub(cursor_x);
-    let right_prob = if distance_from_right >= WIDTH / 8 {
+    let right_prob = if distance_from_right >= VIRTUAL_WIDTH / 4 {
         SCALE
     } else {
-        ((distance_from_right * SCALE as u64) / (WIDTH / 8)) as u32
+        ((distance_from_right * SCALE as u64) / (VIRTUAL_WIDTH / 4)) as u32
     };
 
     let distance_from_top = cursor_y.saturating_sub(top_margin);
