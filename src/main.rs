@@ -1,8 +1,8 @@
-use std::{marker::PhantomData, path::PathBuf, str::FromStr, u8};
+use std::{path::PathBuf, str::FromStr};
 
+use alloy::signers::local::PrivateKeySigner;
 use clap::Parser;
-use image::{ImageBuffer, Pixel, Primitive, Rgb};
-use rand::distr::weighted::WeightedIndex;
+use image::{ImageBuffer, Pixel, Rgb};
 use rand::prelude::*;
 use rand::SeedableRng;
 
@@ -87,7 +87,7 @@ impl Drawyer<Rgb<u8>> {
     }
 
     fn with_seed(width: u64, height: u64, seed: u64) -> Self {
-        let mut rng = StdRng::seed_from_u64(seed);
+        let rng = StdRng::seed_from_u64(seed);
         Self::new(width, height, rng)
     }
 
@@ -106,11 +106,17 @@ impl Drawyer<Rgb<u8>> {
 
     fn random_cursor(&mut self) {
         let rng = &mut self.rng;
-        // self.cursor_x = rng.gen_range(0..self.image.width);
-        // self.cursor_y = rng.gen_range(0..self.image.height);
-        let quarter = self.image.width / 4;
-        self.cursor_x = rng.gen_range(quarter..quarter * 3);
-        self.cursor_y = rng.gen_range(quarter..quarter * 3);
+        // Center-left region (leaves margin for stamps and corners)
+        // x: [width/8, 3*width/8) - quarter-width region on left side
+        let left_margin = self.image.width / 8;
+        let left_center_end = 3 * self.image.width / 8;
+        self.cursor_x = rng.random_range(left_margin..left_center_end);
+
+        // Vertical center (middle half)
+        // y: [height/4, 3*height/4) - keeps pattern away from top/bottom
+        let top_margin = self.image.height / 4;
+        let bottom_margin = 3 * self.image.height / 4;
+        self.cursor_y = rng.random_range(top_margin..bottom_margin);
     }
 
     fn draw(&mut self, pixel: Rgb<u8>) {
@@ -123,11 +129,20 @@ impl Drawyer<Rgb<u8>> {
     }
 
     fn move_cursor_relative(&mut self, x: i32, y: i32) {
-        let x = self.cursor_x as i32 + x;
-        let y = self.cursor_y as i32 + y;
-        if x >= 0 && y >= 0 {
-            self.cursor_x = x as u64;
-            self.cursor_y = y as u64;
+        let new_x = self.cursor_x as i32 + x;
+        let new_y = self.cursor_y as i32 + y;
+
+        // Clamp to centered region to keep pattern localized
+        // Horizontal: [width/8, 3*width/8] for left-center
+        // Vertical: [height/4, 3*height/4] for center
+        let left_margin = self.image.width / 8;
+        let right_boundary = 3 * self.image.width / 8;
+        let top_margin = self.image.height / 4;
+        let bottom_boundary = 3 * self.image.height / 4;
+
+        if new_x >= 0 && new_y >= 0 {
+            self.cursor_x = (new_x as u64).clamp(left_margin, right_boundary - 1);
+            self.cursor_y = (new_y as u64).clamp(top_margin, bottom_boundary - 1);
         }
     }
 
@@ -156,7 +171,6 @@ impl Drawyer<Rgb<u8>> {
 
 struct Artist<T> {
     drawyer: Drawyer<T>,
-    seed: [u8; 32],
     pixel: Rgb<u8>,
 }
 
@@ -177,10 +191,9 @@ impl Artist<Rgb<u8>> {
     // }
 
     fn with_image(seed: [u8; 32], pixel: Rgb<u8>, image: PixelImage<Rgb<u8>>) -> Self {
-        let mut rng = StdRng::from_seed(seed);
+        let rng = StdRng::from_seed(seed);
         Self {
             drawyer: Drawyer::with_image(rng, image),
-            seed,
             pixel,
         }
     }
@@ -211,60 +224,75 @@ impl Artist<Rgb<u8>> {
     }
 
     fn left_probablity(&self) -> f32 {
-        // let distance = self.drawyer.distance_from_left() as f32 / self.drawyer.image.width as f32
-        if self.drawyer.distance_from_left() >= self.drawyer.image.width / 4 {
+        // Prevent going too far left (stay away from x=0 stamp area)
+        let left_margin = self.drawyer.image.width / 8;
+        let distance_from_margin = self.drawyer.cursor_x.saturating_sub(left_margin);
+
+        if distance_from_margin >= self.drawyer.image.width / 8 {
             1.0
         } else {
-            self.drawyer.distance_from_left() as f32 / self.drawyer.image.width as f32
+            distance_from_margin as f32 / (self.drawyer.image.width / 8) as f32
         }
     }
 
     fn right_probablity(&self) -> f32 {
-        // self.drawyer.distance_from_right() as f32 / self.drawyer.image.width as f32
-        if self.drawyer.distance_from_right() >= self.drawyer.image.width / 4 {
+        // Use width/2 - margin as right boundary (half-canvas generation)
+        let right_boundary = 3 * self.drawyer.image.width / 8;
+        let distance_from_right = right_boundary.saturating_sub(self.drawyer.cursor_x);
+
+        if distance_from_right >= self.drawyer.image.width / 8 {
             1.0
         } else {
-            self.drawyer.distance_from_right() as f32 / self.drawyer.image.width as f32
+            distance_from_right as f32 / (self.drawyer.image.width / 8) as f32
         }
     }
 
     fn up_probablity(&self) -> f32 {
-        // self.drawyer.distance_from_top() as f32 / self.drawyer.image.height as f32
-        if self.drawyer.distance_from_top() >= self.drawyer.image.height / 4 {
+        // Keep pattern away from top edge
+        let top_margin = self.drawyer.image.height / 4;
+        let distance_from_top = self.drawyer.cursor_y.saturating_sub(top_margin);
+
+        if distance_from_top >= self.drawyer.image.height / 4 {
             1.0
         } else {
-            self.drawyer.distance_from_top() as f32 / self.drawyer.image.height as f32
+            distance_from_top as f32 / (self.drawyer.image.height / 4) as f32
         }
     }
 
     fn down_probablity(&self) -> f32 {
-        // self.drawyer.distance_from_bottom() as f32 / self.drawyer.image.height as f32
-        if self.drawyer.distance_from_bottom() >= self.drawyer.image.height / 4 {
+        // Keep pattern away from bottom edge
+        let bottom_boundary = 3 * self.drawyer.image.height / 4;
+        let distance_from_bottom = bottom_boundary.saturating_sub(self.drawyer.cursor_y);
+
+        if distance_from_bottom >= self.drawyer.image.height / 4 {
             1.0
         } else {
-            self.drawyer.distance_from_bottom() as f32 / self.drawyer.image.height as f32
+            distance_from_bottom as f32 / (self.drawyer.image.height / 4) as f32
         }
     }
 
+    /// Deterministic direction decision using cumulative distribution
+    /// Replaces WeightedIndex to avoid heap allocation (ZK-friendly)
     fn decide_direction(&mut self) -> Decision {
-        let distribution = WeightedIndex::new(&[
-            self.left_probablity(),
-            self.right_probablity(),
-            self.up_probablity(),
-            self.down_probablity(),
-        ])
-        .unwrap();
+        let left = self.left_probablity();
+        let right = self.right_probablity();
+        let up = self.up_probablity();
+        let down = self.down_probablity();
 
-        let mut rng = &mut self.drawyer.rng;
-        let decision = match distribution.sample(&mut rng) {
-            0 => Decision::Left,
-            1 => Decision::Right,
-            2 => Decision::Up,
-            3 => Decision::Down,
-            _ => panic!("Invalid decision"),
-        };
+        let total = left + right + up + down;
+        let rand_val: f32 = self.rng().random();
+        let threshold = rand_val * total;
 
-        decision
+        // Cumulative distribution function
+        if threshold < left {
+            Decision::Left
+        } else if threshold < left + right {
+            Decision::Right
+        } else if threshold < left + right + up {
+            Decision::Up
+        } else {
+            Decision::Down
+        }
     }
 
     // mirror across x axis like rorchach test
@@ -284,23 +312,44 @@ impl Artist<Rgb<u8>> {
         self.drawyer.image = new_image;
     }
 
-    fn stamp(&mut self, offset: u64) -> () {
-        let corners = x(self.seed);
+    /// Encode private key as corner stamps (like playing cards)
+    /// Each corner gets 8 bytes (64 bits) encoded as an 8×8 binary grid
+    /// Uses the image's color palette (foreground pixel for 1, background for 0)
+    fn private_key_stamp(&mut self, pk: &[u8; 32], background: Rgb<u8>, offset: u64) {
+        // Split private key into 4 chunks of 8 bytes each
+        // Top-left: bytes 0-7
+        // Top-right: bytes 8-15
+        // Bottom-left: bytes 16-23
+        // Bottom-right: bytes 24-31
 
-        let width = self.drawyer.image.width - 1;
+        let width = self.drawyer.image.width;
+        let height = self.drawyer.image.height;
 
-        let side_modifier = [(false, false), (false, true), (true, false), (true, true)];
+        // Top-left corner
+        self.stamp_corner(&pk[0..8], offset, offset, background);
 
-        for (i, corner) in corners.iter().enumerate() {
-            let a = side_modifier[i].0;
-            let b = side_modifier[i].1;
-            for (x, y) in corner {
-                let x = x + offset;
-                let y = y + offset;
-                let x = if a { x } else { width - x };
-                let y = if b { y } else { width - y };
-                self.move_cursor(x, y);
-                self.drawyer.draw(self.pixel);
+        // Top-right corner
+        self.stamp_corner(&pk[8..16], width - 8 - offset, offset, background);
+
+        // Bottom-left corner
+        self.stamp_corner(&pk[16..24], offset, height - 8 - offset, background);
+
+        // Bottom-right corner
+        self.stamp_corner(&pk[24..32], width - 8 - offset, height - 8 - offset, background);
+    }
+
+    /// Encode 8 bytes as an 8×8 binary grid at given corner position
+    /// Each byte becomes one row of 8 pixels
+    fn stamp_corner(&mut self, bytes: &[u8], start_x: u64, start_y: u64, background: Rgb<u8>) {
+        for (row, &byte) in bytes.iter().enumerate() {
+            for col in 0..8 {
+                let bit = (byte >> (7 - col)) & 1;
+                let pixel = if bit == 1 {
+                    self.pixel  // Use foreground color for 1
+                } else {
+                    background  // Use background color for 0
+                };
+                self.drawyer.image.set_pixel(start_x + col, start_y + row as u64, pixel);
             }
         }
     }
@@ -324,6 +373,19 @@ fn _is_nth_bit_set(num: u64, n: u64) -> bool {
     (num & (1 << n)) != 0
 }
 
+/// Derive deterministic walk and step parameters from private key
+/// Uses bytes 0-3 for walks (range 3-10) and bytes 4-7 for steps (range 100-300)
+fn derive_parameters(pk: &[u8; 32]) -> (u64, u64) {
+    let walks_raw = u32::from_le_bytes([pk[0], pk[1], pk[2], pk[3]]);
+    let steps_raw = u32::from_le_bytes([pk[4], pk[5], pk[6], pk[7]]);
+
+    // Map to reasonable ranges
+    let walks = 3 + (walks_raw % 8) as u64;  // Range: 3-10
+    let steps = 100 + (steps_raw % 201) as u64;  // Range: 100-300
+
+    (walks, steps)
+}
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -341,14 +403,29 @@ struct Cli {
     #[arg(short, long, default_value = "255,217,102")]
     color: RgbX,
 
-    #[arg(short, long, default_value = "200")]
-    steps: u64,
+    /// Number of steps per walk (optional - derived from private key if not specified)
+    #[arg(short, long)]
+    steps: Option<u64>,
 
-    #[arg(short, long, default_value = "5")]
-    walks: u64,
+    /// Number of walks (optional - derived from private key if not specified)
+    #[arg(short, long)]
+    walks: Option<u64>,
 
+    /// Ethereum private key (hex format, with or without 0x prefix)
     #[arg(long)]
-    seed: Option<u64>,
+    private_key: Option<String>,
+
+    /// Generate a new random private key
+    #[arg(long)]
+    generate_key: bool,
+
+    /// Disable private key stamp on edges
+    #[arg(long)]
+    no_stamp: bool,
+
+    /// Offset of corner stamps from edges (default: 0)
+    #[arg(long, default_value = "0")]
+    stamp_offset: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -376,129 +453,62 @@ impl RgbX {
     }
 }
 
-fn u64_to_bool_list(mut num: u64) -> Vec<bool> {
-    let mut bits = Vec::with_capacity(64);
-    for _ in 0..64 {
-        bits.push(num & 1 == 1);
-        num >>= 1;
-    }
-    bits
-}
-
-fn transpose(data: [u8; 32]) -> [u64; 4] {
-    let mut result = [0u64; 4];
-
-    for i in 0..4 {
-        let offset = i * 8;
-        result[i] = ((data[offset] as u64) << 56)
-            | ((data[offset + 1] as u64) << 48)
-            | ((data[offset + 2] as u64) << 40)
-            | ((data[offset + 3] as u64) << 32)
-            | ((data[offset + 4] as u64) << 24)
-            | ((data[offset + 5] as u64) << 16)
-            | ((data[offset + 6] as u64) << 8)
-            | (data[offset + 7] as u64);
-    }
-
-    result
-}
-
-fn reverse_transpose(data: [u64; 4]) -> [u8; 32] {
-    let mut result = [0u8; 32];
-
-    for i in 0..4 {
-        let offset = i * 8;
-        result[offset] = (data[i] >> 56) as u8;
-        result[offset + 1] = (data[i] >> 48) as u8;
-        result[offset + 2] = (data[i] >> 40) as u8;
-        result[offset + 3] = (data[i] >> 32) as u8;
-        result[offset + 4] = (data[i] >> 24) as u8;
-        result[offset + 5] = (data[i] >> 16) as u8;
-        result[offset + 6] = (data[i] >> 8) as u8;
-        result[offset + 7] = data[i] as u8;
-    }
-
-    result
-}
-
-fn draw(val: u64) -> Vec<(u64, u64)> {
-    let mut v = Vec::new();
-    let mut p = 0u64;
-    let mut x = 0u64;
-    let mut y = 0u64;
-    let mut clockwise: bool = true;
-
-    for b in u64_to_bool_list(val).into_iter() {
-        if b {
-            v.push((x, y));
-        }
-
-        if (x == 0 && y == p && clockwise) || (x == p && y == 0 && !clockwise) {
-            p += 1;
-            clockwise = !clockwise;
-            if x == 0 {
-                y = p
-            } else {
-                x = p
-            }
-        } else if y == x {
-            if clockwise {
-                x -= 1;
-            } else {
-                y -= 1;
-            }
-        } else if x == p {
-            if clockwise {
-                y += 1;
-            } else {
-                y -= 1;
-            }
-        } else if y == p {
-            if clockwise {
-                x -= 1;
-            } else {
-                x += 1;
-            }
-        }
-    }
-    v
-}
-
-fn x(val: [u8; 32]) -> [Vec<(u64, u64)>; 4] {
-    let mut corners: [Vec<(u64, u64)>; 4] = [vec![], vec![], vec![], vec![]];
-    let val = transpose(val);
-
-    corners[0] = draw(val[0]);
-    corners[1] = draw(val[1]);
-    corners[2] = draw(val[2]);
-    corners[3] = draw(val[3]);
-    corners
-}
 
 fn main() {
     let cli = Cli::parse();
 
-    let seed: [u64; 4] = if let Some(seed) = cli.seed {
-        [seed, seed, seed, seed]
+    // Generate or parse private key
+    let private_key: [u8; 32] = if let Some(pk_hex) = cli.private_key {
+        // Parse hex string (with or without 0x prefix)
+        let pk_hex = pk_hex.trim_start_matches("0x");
+        hex::decode(pk_hex)
+            .expect("Invalid hex string for private key")
+            .try_into()
+            .expect("Private key must be exactly 32 bytes")
+    } else if cli.generate_key {
+        // Generate new random private key
+        let signer = PrivateKeySigner::random();
+        let pk_bytes = signer.credential().to_bytes();
+        println!("Generated private key: 0x{}", hex::encode(pk_bytes));
+        println!("Address: {}", signer.address());
+        pk_bytes.into()
     } else {
-        rand::rng().random()
+        eprintln!("Error: Must provide --private-key or --generate-key");
+        std::process::exit(1);
     };
 
-    let rng_seed = reverse_transpose(seed);
+    // Derive walks/steps from private key (or use CLI overrides)
+    let (default_walks, default_steps) = derive_parameters(&private_key);
+    let walks = cli.walks.unwrap_or(default_walks);
+    let steps = cli.steps.unwrap_or(default_steps);
+
+    if cli.debug > 0 {
+        println!("Using walks={}, steps={}", walks, steps);
+        if cli.walks.is_none() && cli.steps.is_none() {
+            println!("(derived from private key)");
+        }
+    }
 
     let pixel = cli.color.to_rgb();
+    let background = cli.background.to_rgb();
 
+    // Create artist with private key as seed
     let mut artist = Artist::with_image(
-        rng_seed,
+        private_key,
         pixel,
-        PixelImage::new(64, 64, Some(cli.background.to_rgb())),
+        PixelImage::new(64, 64, Some(background)),
     );
 
-    artist.draw_random(cli.steps, cli.walks);
+    // Generate Rorschach pattern
+    artist.draw_random(steps, walks);
 
-    artist.stamp(4);
+    // Add private key stamp (optional)
+    if !cli.no_stamp {
+        artist.private_key_stamp(&private_key, background, cli.stamp_offset);
+    }
 
     let image = &artist.drawyer.image;
 
+    // Upscale and save
     image.upscale(8).export_image().save(cli.output).unwrap();
 }
