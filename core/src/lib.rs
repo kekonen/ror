@@ -3,7 +3,7 @@
 extern crate alloc;
 use alloc::vec::Vec;
 
-use rand::{Rng, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -159,12 +159,20 @@ enum Direction {
 }
 
 /// Derive deterministic walk and step parameters from private key
+/// Uses ChaCha8 RNG seeded with the private key to ensure:
+/// - Deterministic: same private key always produces same parameters
+/// - Avalanche effect: tiny change in private key drastically changes output
+/// - Wide range: produces diverse walk counts (3-20) and step counts (80-300)
 pub fn derive_parameters(pk: &[u8; 32]) -> (u64, u64) {
-    let walks_raw = u32::from_le_bytes([pk[0], pk[1], pk[2], pk[3]]);
-    let steps_raw = u32::from_le_bytes([pk[4], pk[5], pk[6], pk[7]]);
+    // Use ChaCha8 RNG for cryptographic-quality randomness from private key
+    // This ensures tiny changes in pk cause completely different outputs
+    let mut rng = ChaCha8Rng::from_seed(*pk);
 
-    let walks = 3 + (walks_raw % 8) as u64;
-    let steps = 100 + (steps_raw % 201) as u64;
+    // Generate walks: 3-20 (smaller range for complexity control)
+    let walks = 3 + (rng.next_u32() % 18) as u64;
+
+    // Generate steps: 80-300 (wider range for pattern variety)
+    let steps = 80 + (rng.next_u32() % 221) as u64;
 
     (walks, steps)
 }
