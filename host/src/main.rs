@@ -312,8 +312,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
         }
 
+        // Upscale to 512×512
+        let final_image = upscale(&full_image, 8);
+
         // Save final image
-        full_image.save(&cli.output)?;
+        final_image.save(&cli.output)?;
         println!("  Image saved to: {}", cli.output.display());
         println!("  (Colors applied after verification - can be changed freely!)");
 
