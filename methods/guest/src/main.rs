@@ -4,7 +4,7 @@
 extern crate alloc;
 
 use risc0_zkvm::guest::env;
-use ror_core::{derive_parameters, generate_rorschach_binary};
+use ror_core::{derive_parameters, generate_rorschach_binary, ProofOutputs};
 use k256::ecdsa::{SigningKey, VerifyingKey};
 use sha3::{Digest, Keccak256};
 
@@ -35,19 +35,22 @@ fn main() {
     // Colors will be applied on the host side after verification
     let binary_image = generate_rorschach_binary(&private_key, walks, steps);
 
-    // Commit public outputs to the journal
-    // Note: binary image is only 256 bytes vs 6,144 bytes for RGB!
-    env::commit(&address);
-    env::commit(&walks);
-    env::commit(&steps);
-
-    // Commit binary image as 8 chunks of 32 bytes each (256 total)
+    // Prepare binary image as 8 chunks of 32 bytes each (256 total)
     // risc0 journal can't serialize arrays >32, so we chunk it
+    let mut binary_chunks = [[0u8; 32]; 8];
     for chunk_idx in 0..8 {
         let start = chunk_idx * 32;
         let end = start + 32;
-        let mut chunk = [0u8; 32];
-        chunk.copy_from_slice(&binary_image.data[start..end]);
-        env::commit(&chunk);
+        binary_chunks[chunk_idx].copy_from_slice(&binary_image.data[start..end]);
     }
+
+    // Commit all public outputs as a single struct
+    // This is the correct way to use risc0 journal - one decode() call on host
+    let outputs = ProofOutputs {
+        address,
+        walks,
+        steps,
+        binary_chunks,
+    };
+    env::commit(&outputs);
 }

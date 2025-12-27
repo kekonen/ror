@@ -76,6 +76,16 @@ pub struct BinaryImage32x64 {
     pub data: Vec<u8>,
 }
 
+/// Output struct for ZK proof journal
+/// Contains all public outputs that are committed to the journal
+#[derive(Serialize, Deserialize)]
+pub struct ProofOutputs {
+    pub address: [u8; 20],
+    pub walks: u64,
+    pub steps: u64,
+    pub binary_chunks: [[u8; 32]; 8],  // 8 chunks of 32 bytes each
+}
+
 // Manual Serialize/Deserialize to avoid Vec length prefix issues
 impl Serialize for BinaryImage32x64 {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

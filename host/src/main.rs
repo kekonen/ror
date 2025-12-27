@@ -4,7 +4,7 @@ use alloy::signers::local::PrivateKeySigner;
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
-use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, BinaryImage32x64, Image32x64, Pixel};
+use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, BinaryImage32x64, Image32x64, Pixel, ProofOutputs};
 
 // Include the generated guest code
 use methods::{GUEST_ELF, GUEST_ID};
@@ -110,22 +110,19 @@ fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
 
     receipt.verify(GUEST_ID)?;
 
-    // Extract public outputs (now includes binary image, not RGB!)
-    let address: [u8; 20] = receipt.journal.decode()?;
-    let walks: u64 = receipt.journal.decode()?;
-    let steps: u64 = receipt.journal.decode()?;
+    // Decode all outputs as a single struct (risc0 best practice)
+    let outputs: ProofOutputs = receipt.journal.decode()?;
 
-    // Decode binary image as 8 chunks of 32 bytes each (256 total)
+    // Reconstruct binary image from chunks
     let mut binary_data = Vec::with_capacity(256);
-    for _ in 0..8 {
-        let chunk: [u8; 32] = receipt.journal.decode()?;
-        binary_data.extend_from_slice(&chunk);
+    for chunk in &outputs.binary_chunks {
+        binary_data.extend_from_slice(chunk);
     }
     let binary_image = BinaryImage32x64::from_bytes(&binary_data);
 
     println!("✓ Proof verified successfully!");
-    println!("  Address: 0x{}", hex::encode(address));
-    println!("  Parameters: walks={}, steps={}", walks, steps);
+    println!("  Address: 0x{}", hex::encode(outputs.address));
+    println!("  Parameters: walks={}, steps={}", outputs.walks, outputs.steps);
     println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_image.data.len());
     println!("  (Colors can be applied freely after verification)");
 
@@ -269,22 +266,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if cli.prove {
         let receipt = generate_proof(&private_key)?;
 
-        // Extract public outputs (binary image, not RGB!)
-        let address: [u8; 20] = receipt.journal.decode()?;
-        let walks: u64 = receipt.journal.decode()?;
-        let steps: u64 = receipt.journal.decode()?;
+        // Decode all outputs as a single struct (risc0 best practice)
+        let outputs: ProofOutputs = receipt.journal.decode()?;
 
-        // Decode binary image as 8 chunks of 32 bytes each (256 total)
+        // Reconstruct binary image from chunks
         let mut binary_data = Vec::with_capacity(256);
-        for _ in 0..8 {
-            let chunk: [u8; 32] = receipt.journal.decode()?;
-            binary_data.extend_from_slice(&chunk);
+        for chunk in &outputs.binary_chunks {
+            binary_data.extend_from_slice(chunk);
         }
         let binary_image = BinaryImage32x64::from_bytes(&binary_data);
 
         println!("✓ Proof generated successfully!");
-        println!("  Address: 0x{}", hex::encode(address));
-        println!("  Parameters: walks={}, steps={}", walks, steps);
+        println!("  Address: 0x{}", hex::encode(outputs.address));
+        println!("  Parameters: walks={}, steps={}", outputs.walks, outputs.steps);
         println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_image.data.len());
 
         // Save proof
