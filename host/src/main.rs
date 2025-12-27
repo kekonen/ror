@@ -114,7 +114,14 @@ fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> 
     let address: [u8; 20] = receipt.journal.decode()?;
     let walks: u64 = receipt.journal.decode()?;
     let steps: u64 = receipt.journal.decode()?;
-    let binary_image: BinaryImage32x64 = receipt.journal.decode()?; // Decode struct directly
+
+    // Decode binary image as 8 chunks of 32 bytes each (256 total)
+    let mut binary_data = Vec::with_capacity(256);
+    for _ in 0..8 {
+        let chunk: [u8; 32] = receipt.journal.decode()?;
+        binary_data.extend_from_slice(&chunk);
+    }
+    let binary_image = BinaryImage32x64::from_bytes(&binary_data);
 
     println!("✓ Proof verified successfully!");
     println!("  Address: 0x{}", hex::encode(address));
@@ -266,7 +273,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let address: [u8; 20] = receipt.journal.decode()?;
         let walks: u64 = receipt.journal.decode()?;
         let steps: u64 = receipt.journal.decode()?;
-        let binary_image: BinaryImage32x64 = receipt.journal.decode()?; // Decode struct directly
+
+        // Decode binary image as 8 chunks of 32 bytes each (256 total)
+        let mut binary_data = Vec::with_capacity(256);
+        for _ in 0..8 {
+            let chunk: [u8; 32] = receipt.journal.decode()?;
+            binary_data.extend_from_slice(&chunk);
+        }
+        let binary_image = BinaryImage32x64::from_bytes(&binary_data);
 
         println!("✓ Proof generated successfully!");
         println!("  Address: 0x{}", hex::encode(address));

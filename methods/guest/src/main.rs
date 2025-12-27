@@ -40,5 +40,14 @@ fn main() {
     env::commit(&address);
     env::commit(&walks);
     env::commit(&steps);
-    env::commit(&binary_image); // Commit the struct directly, not Vec<u8>
+
+    // Commit binary image as 8 chunks of 32 bytes each (256 total)
+    // risc0 journal can't serialize arrays >32, so we chunk it
+    for chunk_idx in 0..8 {
+        let start = chunk_idx * 32;
+        let end = start + 32;
+        let mut chunk = [0u8; 32];
+        chunk.copy_from_slice(&binary_image.data[start..end]);
+        env::commit(&chunk);
+    }
 }
