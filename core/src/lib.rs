@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Simple RGB pixel
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -70,10 +70,31 @@ impl Image32x64 {
 /// Binary image for ZK proof (1 bit per pixel)
 /// Stores pixels as packed bits: 32×64 pixels = 2,048 bits = 256 bytes
 /// This is 24x smaller than RGB representation!
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone)]
 pub struct BinaryImage32x64 {
-    // Each byte stores 8 pixels
+    // Back to Vec for simplicity - we'll use risc0's bytes encoding
     pub data: Vec<u8>,
+}
+
+// Manual Serialize/Deserialize to avoid Vec length prefix issues
+impl Serialize for BinaryImage32x64 {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // Serialize as a byte array to avoid variable length encoding
+        serializer.serialize_bytes(&self.data)
+    }
+}
+
+impl<'de> Deserialize<'de> for BinaryImage32x64 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let data = Vec::<u8>::deserialize(deserializer)?;
+        Ok(BinaryImage32x64 { data })
+    }
 }
 
 impl BinaryImage32x64 {
