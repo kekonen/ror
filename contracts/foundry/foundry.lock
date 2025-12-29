@@ -1,4 +1,7 @@
 {
+  "../../lib/risc0-ethereum": {
+    "rev": "3c1fd2a859e40ea009a580aac294191196968c60"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.12.0",
@@ -6,9 +9,9 @@
     }
   },
   "lib/risc0-ethereum": {
-    "tag": {
-      "name": "v1.1.3",
-      "rev": "35a6e27a39fc8408ee1c7d2c7da4c762c2fb0f25"
+    "branch": {
+      "name": "release-3.0",
+      "rev": "320a2eecc4adaa1a12ecfdb598a6df1d758b3f9f"
     }
   }
 }

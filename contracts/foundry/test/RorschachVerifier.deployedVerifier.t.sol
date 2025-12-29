@@ -5,8 +5,8 @@ import {Test, console2} from "forge-std/Test.sol";
 import {RorschachVerifier} from "../src/RorschachVerifier.sol";
 import {ImageID} from "../src/ImageID.sol";
 import {IRiscZeroVerifier} from "../src/IRiscZeroVerifier.sol";
-import {RiscZeroGroth16Verifier} from "../src/RiscZeroGroth16Verifier_v1_2.sol";
-import {ControlID_v3} from "../src/ControlID_v3.sol";
+import {RiscZeroGroth16Verifier} from "risc0-ethereum/contracts/src/groth16/RiscZeroGroth16Verifier.sol";
+import {ControlID} from "risc0-ethereum/contracts/src/groth16/ControlID.sol";
 
 /// @notice Fork test with deployed risc0 v3.0 Groth16 verifier
 /// @dev This test deploys the correct verifier for our proofs
@@ -20,11 +20,11 @@ contract RorschachVerifierDeployedTest is Test {
     uint64 constant TEST_STEPS = 269;
 
     function setUp() public {
-        // Deploy the RISC Zero Groth16 verifier with v3.0.4 control IDs
-        console2.log("Deploying RISC Zero Groth16 Verifier (v3.0.4)...");
+        // Deploy the RISC Zero Groth16 verifier with v1.2.0 control IDs
+        console2.log("Deploying RISC Zero Groth16 Verifier (v1.2.0)...");
         RiscZeroGroth16Verifier verifierImpl = new RiscZeroGroth16Verifier(
-            ControlID_v3.CONTROL_ROOT,
-            ControlID_v3.BN254_CONTROL_ID
+            ControlID.CONTROL_ROOT,
+            ControlID.BN254_CONTROL_ID
         );
         risc0Verifier = IRiscZeroVerifier(address(verifierImpl));
         console2.log("RISC Zero verifier deployed at:", address(risc0Verifier));

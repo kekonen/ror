@@ -1,0 +1,8 @@
+{
+  "lib/risc0-ethereum": {
+    "tag": {
+      "name": "v1.2.0",
+      "rev": "3c1fd2a859e40ea009a580aac294191196968c60"
+    }
+  }
+}
