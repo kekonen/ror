@@ -1,7 +1,6 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
 use alloy::signers::local::PrivateKeySigner;
-use alloy_sol_types::{sol, SolValue};
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
@@ -11,16 +10,8 @@ use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, Binary
 use methods::{GUEST_ELF, GUEST_ID};
 
 // Define Solidity-compatible types for ABI encoding
-sol! {
-    struct JournalData {
-        address ethAddress;
-        uint64 walks;
-        uint64 steps;
-        bytes imageBytes;
-    }
-}
-
 /// Encode journal data for Solidity compatibility
+/// Encodes as: (address, uint64, uint64, bytes)
 fn encode_journal_for_solidity(outputs: &ProofOutputs) -> Vec<u8> {
     // Flatten binary_chunks into single bytes array
     let mut image_bytes = Vec::with_capacity(256);
@@ -28,19 +19,34 @@ fn encode_journal_for_solidity(outputs: &ProofOutputs) -> Vec<u8> {
         image_bytes.extend_from_slice(chunk);
     }
 
-    // Convert address bytes to alloy_sol_types Address type
-    let address = alloy_sol_types::private::Address::from_slice(&outputs.address);
+    // Manual ABI encoding to match Solidity (address, uint64, uint64, bytes)
+    let mut encoded = Vec::new();
 
-    // Create JournalData struct
-    let journal_data = JournalData {
-        ethAddress: address,
-        walks: outputs.walks,
-        steps: outputs.steps,
-        imageBytes: image_bytes.into(),
-    };
+    // 1. address (20 bytes, left-padded to 32 bytes)
+    encoded.extend_from_slice(&[0u8; 12]); // 12 bytes padding
+    encoded.extend_from_slice(&outputs.address); // 20 bytes address
 
-    // ABI-encode for Solidity compatibility
-    journal_data.abi_encode()
+    // 2. uint64 walks (right-aligned in 32 bytes)
+    encoded.extend_from_slice(&[0u8; 24]); // 24 bytes padding
+    encoded.extend_from_slice(&outputs.walks.to_be_bytes()); // 8 bytes
+
+    // 3. uint64 steps (right-aligned in 32 bytes)
+    encoded.extend_from_slice(&[0u8; 24]); // 24 bytes padding
+    encoded.extend_from_slice(&outputs.steps.to_be_bytes()); // 8 bytes
+
+    // 4. bytes offset (pointer to where bytes data starts)
+    // Offset = 4 * 32 = 128 bytes (after address, walks, steps, and this offset)
+    encoded.extend_from_slice(&[0u8; 28]);
+    encoded.extend_from_slice(&[0, 0, 0, 128]); // offset = 0x80
+
+    // 5. bytes length (256)
+    encoded.extend_from_slice(&[0u8; 28]);
+    encoded.extend_from_slice(&[0, 0, 1, 0]); // length = 0x100 = 256
+
+    // 6. bytes data (256 bytes, padded to multiple of 32)
+    encoded.extend_from_slice(&image_bytes);
+
+    encoded
 }
 
 /// Check if platform supports Groth16 proving
