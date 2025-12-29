@@ -5,7 +5,7 @@ import {Test, console2} from "forge-std/Test.sol";
 import {RorschachVerifier} from "../src/RorschachVerifier.sol";
 import {ImageID} from "../src/ImageID.sol";
 import {IRiscZeroVerifier} from "../src/IRiscZeroVerifier.sol";
-import {RiscZeroGroth16Verifier} from "risc0-ethereum/contracts/src/groth16/RiscZeroGroth16Verifier.sol";
+import {RiscZeroGroth16Verifier} from "../src/RiscZeroGroth16Verifier_v1_2.sol";
 import {ControlID_v3} from "../src/ControlID_v3.sol";
 
 /// @notice Fork test with deployed risc0 v3.0 Groth16 verifier

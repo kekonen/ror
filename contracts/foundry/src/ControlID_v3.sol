@@ -5,9 +5,9 @@ pragma solidity ^0.8.9;
 /// @notice Control IDs extracted from risc0-circuit-recursion v4.0.3
 /// @dev These values are from risc0-zkvm v3.0.4 / risc0-circuit-recursion v4.0.3
 library ControlID_v3 {
-    /// @notice Control root hash for risc0 v3.0.4
-    /// @dev From risc0_circuit_recursion::control_id::ALLOWED_CONTROL_ROOT
-    bytes32 public constant CONTROL_ROOT = hex"a54dc85ac99f851c92d7c96d7318af41dbe7c0194edfcc37eb4d422a998c1f56";
+    /// @notice Control root hash for risc0 Groth16
+    /// @dev From risc0-ethereum v1.2.0 (matches Docker image v2025-04-03.1)
+    bytes32 public constant CONTROL_ROOT = hex"8cdad9242664be3112aba377c5425a4df735eb1c6966472b561d2855932c0469";
     
     /// @notice BN254 identity control ID for Groth16 verification
     /// @dev From risc0_circuit_recursion::control_id::BN254_IDENTITY_CONTROL_ID
