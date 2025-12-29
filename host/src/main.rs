@@ -1,6 +1,7 @@
 use std::{fs, path::PathBuf, str::FromStr};
 
 use alloy::signers::local::PrivateKeySigner;
+use alloy_sol_types::{sol, SolValue};
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
 use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
@@ -8,6 +9,62 @@ use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, Binary
 
 // Include the generated guest code
 use methods::{GUEST_ELF, GUEST_ID};
+
+// Define Solidity-compatible types for ABI encoding
+sol! {
+    struct JournalData {
+        address ethAddress;
+        uint64 walks;
+        uint64 steps;
+        bytes imageBytes;
+    }
+}
+
+/// Encode journal data for Solidity compatibility
+fn encode_journal_for_solidity(outputs: &ProofOutputs) -> Vec<u8> {
+    // Flatten binary_chunks into single bytes array
+    let mut image_bytes = Vec::with_capacity(256);
+    for chunk in &outputs.binary_chunks {
+        image_bytes.extend_from_slice(chunk);
+    }
+
+    // Convert address bytes to alloy_sol_types Address type
+    let address = alloy_sol_types::private::Address::from_slice(&outputs.address);
+
+    // Create JournalData struct
+    let journal_data = JournalData {
+        ethAddress: address,
+        walks: outputs.walks,
+        steps: outputs.steps,
+        imageBytes: image_bytes.into(),
+    };
+
+    // ABI-encode for Solidity compatibility
+    journal_data.abi_encode()
+}
+
+/// Check if platform supports Groth16 proving
+fn check_groth16_platform() -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        return Err("Groth16 proving requires x86_64 architecture. Current: ARM/other.
+                   Please run on x86 Linux with Docker installed.".into());
+    }
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        // Check if Docker is available
+        let docker_check = std::process::Command::new("docker")
+            .arg("--version")
+            .output();
+
+        match docker_check {
+            Ok(output) if output.status.success() => Ok(()),
+            _ => Err("Docker not found. Groth16 proving requires Docker.
+                     Install: sudo apt-get install docker.io".into()),
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -53,6 +110,10 @@ struct Cli {
     /// Generate ZK proof
     #[arg(long)]
     prove: bool,
+
+    /// Generate Groth16 proof for on-chain verification (requires x86 Linux + Docker)
+    #[arg(long)]
+    prove_groth16: bool,
 
     /// Verify an existing proof
     #[arg(long)]
@@ -100,6 +161,85 @@ fn generate_proof(private_key: &[u8; 32]) -> Result<Receipt, Box<dyn std::error:
     let receipt = prove_info.receipt;
 
     Ok(receipt)
+}
+
+#[cfg(feature = "groth16")]
+fn generate_groth16_proof(
+    private_key: &[u8; 32],
+    output_path: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use risc0_zkvm::{ProverOpts, InnerReceipt};
+
+    println!("Generating Groth16 proof... (this may take 5-10 minutes)");
+    println!("Using Docker backend for Groth16 conversion...");
+
+    // Build execution environment
+    let env = ExecutorEnv::builder()
+        .write(private_key)?
+        .build()?;
+
+    // Get prover with Groth16 options
+    println!("Step 1/2: Generating STARK proof...");
+    let prover = default_prover();
+    let opts = ProverOpts::groth16();
+    let prove_info = prover.prove_with_opts(env, GUEST_ELF, &opts)?;
+
+    println!("Step 2/2: Converting to Groth16 via Docker...");
+    let receipt = prove_info.receipt;
+
+    // Optionally save STARK receipt for debugging/reference
+    let stark_path = output_path.with_extension("stark.proof");
+    if let Ok(stark_bytes) = bincode::serialize(&receipt) {
+        let _ = fs::write(&stark_path, stark_bytes);
+    }
+
+    // Decode outputs
+    let outputs: ProofOutputs = receipt.journal.decode()?;
+
+    // Get the Groth16 seal from the receipt
+    let groth16_seal = match &receipt.inner {
+        InnerReceipt::Groth16(receipt) => &receipt.seal,
+        _ => return Err("Expected Groth16 receipt but got different type".into()),
+    };
+
+    // Reconstruct binary image from chunks
+    let mut binary_data = Vec::with_capacity(256);
+    for chunk in &outputs.binary_chunks {
+        binary_data.extend_from_slice(chunk);
+    }
+    let binary_image = BinaryImage32x64::from_bytes(&binary_data);
+
+    println!("✓ Groth16 proof generated successfully!");
+    println!("  Address: 0x{}", hex::encode(outputs.address));
+    println!("  Parameters: walks={}, steps={}", outputs.walks, outputs.steps);
+    println!("  Binary image size: {} bytes", binary_image.data.len());
+
+    // Save seal (Groth16 proof) for on-chain verification
+    let seal_path = output_path.with_extension("seal");
+    fs::write(&seal_path, groth16_seal)?;
+    println!("  Groth16 seal saved to: {} ({} bytes)", seal_path.display(), groth16_seal.len());
+
+    // Save journal (public outputs) for on-chain verification
+    let journal_bytes = encode_journal_for_solidity(&outputs);
+    let journal_path = output_path.with_extension("journal");
+    fs::write(&journal_path, &journal_bytes)?;
+    println!("  Journal saved to: {} ({} bytes)", journal_path.display(), journal_bytes.len());
+
+    // Also save full receipt for reference
+    let receipt_path = output_path.with_extension("groth16.proof");
+    let receipt_bytes = bincode::serialize(&receipt)?;
+    fs::write(&receipt_path, receipt_bytes)?;
+    println!("  Full receipt saved to: {}", receipt_path.display());
+
+    Ok(())
+}
+
+#[cfg(not(feature = "groth16"))]
+fn generate_groth16_proof(
+    _private_key: &[u8; 32],
+    _output_path: &PathBuf,
+) -> Result<(), Box<dyn std::error::Error>> {
+    Err("Groth16 feature not enabled. Build with: cargo build --features groth16".into())
 }
 
 fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
@@ -262,7 +402,33 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Must provide --private-key or --generate-key".into());
     };
 
-    // Proof generation mode
+    // Groth16 proof generation mode (on-chain ready)
+    if cli.prove_groth16 {
+        check_groth16_platform()?;
+        generate_groth16_proof(&private_key, &cli.output)?;
+
+        // Still generate the image for visualization
+        let (default_walks, default_steps) = derive_parameters(&private_key);
+        let walks = cli.walks.unwrap_or(default_walks);
+        let steps = cli.steps.unwrap_or(default_steps);
+
+        let foreground = cli.color.to_pixel();
+        let background = cli.background.to_pixel();
+        let half_image = generate_rorschach_half(&private_key, walks, steps, foreground, background);
+
+        let mut full_image = mirror_half_to_full(&half_image, background);
+        if !cli.no_stamp {
+            add_corner_stamps(&mut full_image, &private_key,
+                cli.color.to_rgb(), cli.background.to_rgb(), cli.stamp_offset);
+        }
+        let final_image = upscale(&full_image, 8);
+        final_image.save(&cli.output)?;
+        println!("  Image saved to: {}", cli.output.display());
+
+        return Ok(());
+    }
+
+    // STARK proof generation mode
     if cli.prove {
         let receipt = generate_proof(&private_key)?;
 
