@@ -14,14 +14,14 @@ contract RorschachVerifierDeployedTest is Test {
     RorschachVerifier public verifier;
     IRiscZeroVerifier public risc0Verifier;
     
-    // Test data from our generated proof
-    address constant TEST_ADDRESS = 0x49EC48990bdb9F089C32c4FC058e30Efb18802Be;
-    uint64 constant TEST_WALKS = 13;
-    uint64 constant TEST_STEPS = 269;
+    // Test data from our generated proof (test_groth16_v3)
+    address constant TEST_ADDRESS = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+    uint64 constant TEST_WALKS = 16;
+    uint64 constant TEST_STEPS = 278;
 
     function setUp() public {
-        // Deploy the RISC Zero Groth16 verifier with v1.2.0 control IDs
-        console2.log("Deploying RISC Zero Groth16 Verifier (v1.2.0)...");
+        // Deploy the RISC Zero Groth16 verifier with v3.0 control IDs
+        console2.log("Deploying RISC Zero Groth16 Verifier (v3.0)...");
         RiscZeroGroth16Verifier verifierImpl = new RiscZeroGroth16Verifier(
             ControlID.CONTROL_ROOT,
             ControlID.BN254_CONTROL_ID
@@ -39,12 +39,12 @@ contract RorschachVerifierDeployedTest is Test {
     function testDeployed_VerifyRealProof() public {
         string memory root = vm.projectRoot();
         
-        // Read the proof files
+        // Read the proof files (generated with risc0 v3.0)
         bytes memory seal = vm.readFileBinary(
-            string.concat(root, "/../../test_groth16.seal")
+            string.concat(root, "/../../test_groth16_v3.seal")
         );
         bytes memory journal = vm.readFileBinary(
-            string.concat(root, "/../../test_groth16.journal")
+            string.concat(root, "/../../test_groth16_v3.journal")
         );
 
         console2.log("\n=== Real Proof Test with Deployed Verifier ===");
@@ -85,10 +85,10 @@ contract RorschachVerifierDeployedTest is Test {
     function testDeployed_ImageStorage() public {
         string memory root = vm.projectRoot();
         bytes memory seal = vm.readFileBinary(
-            string.concat(root, "/../../test_groth16.seal")
+            string.concat(root, "/../../test_groth16_v3.seal")
         );
         bytes memory journal = vm.readFileBinary(
-            string.concat(root, "/../../test_groth16.journal")
+            string.concat(root, "/../../test_groth16_v3.journal")
         );
 
         // Verify the proof
