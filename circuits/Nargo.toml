@@ -1,0 +1,12 @@
+[package]
+name = "circuits"
+type = "bin"
+authors = [""]
+
+[dependencies]
+# Keccak256 for future Ethereum address verification (not used in MVP)
+# keccak256 = { tag = "v0.3.4", git = "https://github.com/noir-lang/keccak256" }
+
+# NOTE: For MVP, we skip secp256k1 public key derivation in-circuit
+# The ethereum_address is passed as a public input
+# Full secp256k1 derivation can be added later using ecrecover library

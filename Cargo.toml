@@ -1,6 +1,6 @@
 [workspace]
-members = ["host", "core", "methods"]
-exclude = ["methods/guest"]
+members = ["host", "core"]
+# Removed "methods" - migrated to Noir circuits
 resolver = "2"
 
 [workspace.dependencies]
