@@ -1,0 +1,12 @@
+[workspace]
+members = [
+    "program",
+    "client"
+]
+resolver = "2"
+
+[workspace.dependencies]
+solana-program = "1.18"
+solana-sdk = "1.18"
+borsh = "1.5"
+thiserror = "1.0"

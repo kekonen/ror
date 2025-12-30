@@ -1,0 +1,19 @@
+[package]
+name = "rorschach-client"
+version = "0.1.0"
+description = "Client for interacting with Rorschach Solana program"
+edition = "2021"
+
+[[bin]]
+name = "rorschach-client"
+path = "src/main.rs"
+
+[dependencies]
+solana-sdk = { workspace = true }
+solana-client = "1.18"
+solana-program = { workspace = true }
+borsh = { workspace = true }
+thiserror = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
+hex = "0.4"
+serde_json = "1.0"

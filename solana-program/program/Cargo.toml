@@ -1,0 +1,20 @@
+[package]
+name = "rorschach-solana"
+version = "0.1.0"
+description = "Rorschach ZK Image Verification on Solana"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+no-entrypoint = []
+
+[dependencies]
+solana-program = { workspace = true }
+borsh = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+solana-program-test = "1.18"
+solana-sdk = { workspace = true }
