@@ -10,14 +10,16 @@ via_ir = true
 # Test configuration
 gas_reports = ["*"]
 
-# risc0 integration - allow reading test proofs
+# Allow reading proof files from project root
 fs_permissions = [{ access = "read", path = "../../" }]
 
 [rpc_endpoints]
 localhost = "http://127.0.0.1:8545"
 mainnet = "${ETH_RPC_URL}"
 sepolia = "${SEPOLIA_RPC_URL}"
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
 
 [etherscan]
 mainnet = { key = "${ETHERSCAN_API_KEY}" }
 sepolia = { key = "${ETHERSCAN_API_KEY}" }
+base_sepolia = { key = "${BASESCAN_API_KEY}", url = "https://api-sepolia.basescan.org/api" }

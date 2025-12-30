@@ -3,34 +3,13 @@ use std::{fs, path::PathBuf, str::FromStr};
 use alloy::signers::local::PrivateKeySigner;
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
-use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, generate_rorschach_binary, BinaryImage32x64, Image32x64, Pixel};
+use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_binary, BinaryImage32x64, Image32x64, Pixel};
 
 // Noir integration
 use ror_core::noir::execute_noir_circuit;
 
 // Barretenberg integration for Groth16
 use ror_core::barretenberg::{generate_groth16_proof, generate_verifier_contract, encode_public_inputs_simple};
-
-// Risc0 imports (kept for backward compatibility if needed)
-// use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
-// use ror_core::ProofOutputs;
-// use methods::{GUEST_ELF, GUEST_ID};
-
-// Risc0-specific Solidity encoding (kept for reference, currently commented out)
-// fn encode_journal_for_solidity(outputs: &ProofOutputs) -> Vec<u8> {
-//     // Flatten binary_chunks into single bytes array
-//     let mut image_bytes = Vec::with_capacity(256);
-//     for chunk in &outputs.binary_chunks {
-//         image_bytes.extend_from_slice(chunk);
-//     }
-//     // ... encoding logic ...
-//     encoded
-// }
-
-// Risc0 Groth16 support (commented out - TODO: implement Noir Groth16)
-// fn check_groth16_platform() -> Result<(), Box<dyn std::error::Error>> {
-//     ... platform checking logic ...
-// }
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -134,30 +113,6 @@ fn generate_noir_proof(private_key: &[u8; 32]) -> Result<(u64, u64, BinaryImage3
 
     Ok((outputs.walks, outputs.steps, binary_image))
 }
-
-// Risc0 proof generation (kept for reference, currently commented out)
-// fn generate_proof(private_key: &[u8; 32]) -> Result<Receipt, Box<dyn std::error::Error>> {
-//     println!("Generating ZK proof... (this may take a while)");
-//     let env = ExecutorEnv::builder()
-//         .write(private_key)?
-//         .build()?;
-//     let prover = default_prover();
-//     let prove_info = prover.prove(env, GUEST_ELF)?;
-//     let receipt = prove_info.receipt;
-//     Ok(receipt)
-// }
-
-// Risc0 Groth16 proof generation (commented out - TODO: implement with Noir/Barretenberg)
-// #[cfg(feature = "groth16")]
-// fn generate_groth16_proof(...) { ... }
-//
-// #[cfg(not(feature = "groth16"))]
-// fn generate_groth16_proof(...) { ... }
-
-// Risc0 proof verification (commented out - TODO: implement Noir verification)
-// fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-//     ... verification logic ...
-// }
 
 fn mirror_half_to_full(half: &Image32x64, background: Pixel) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
     let mut full_image = vec![background; 64 * 64];
@@ -404,7 +359,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Normal generation mode (without proof)
     // To ensure consistency with proof mode, we use Noir circuit for everything
     // This ensures the same private key produces IDENTICAL images in both modes
-    let (walks, steps, binary_image) = if cli.walks.is_none() && cli.steps.is_none() {
+    let (_walks, _steps, binary_image) = if cli.walks.is_none() && cli.steps.is_none() {
         // Use Noir circuit to generate the canonical image
         let outputs = execute_noir_circuit(&private_key, "circuits")?;
         let binary = BinaryImage32x64::from_bytes(&outputs.binary_image);

@@ -1,6 +1,5 @@
 [workspace]
 members = ["host", "core", "test-pedersen"]
-# Removed "methods" - migrated to Noir circuits
 resolver = "2"
 
 [workspace.dependencies]
@@ -8,6 +7,3 @@ alloy = "1.2.1"
 hex = "0.4"
 rand = { version = "0.8", default-features = false }
 rand_chacha = { version = "0.3", default-features = false }
-
-# risc0
-risc0-zkvm = { version = "3.0", default-features = false }
