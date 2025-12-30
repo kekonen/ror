@@ -7,5 +7,9 @@ edition = "2021"
 name = "test_pedersen"
 path = "../test_pedersen.rs"
 
+[[bin]]
+name = "test_noir_integration"
+path = "../test_noir_integration.rs"
+
 [dependencies]
 ror-core = { path = "../core" }
