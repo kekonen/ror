@@ -8,6 +8,9 @@ use std::fs;
 
 /// Generate Groth16 proof using Barretenberg
 ///
+/// NOTE: Groth16 has circuit size limits. For large circuits (>10MB), this may fail.
+/// Consider using UltraPlonk instead for production.
+///
 /// Requires:
 /// - Compiled circuit: circuits/target/circuits.json
 /// - Witness file: circuits/target/circuits.gz
@@ -18,6 +21,7 @@ use std::fs;
 pub fn generate_groth16_proof(circuits_dir: &str) -> Result<Vec<u8>, String> {
     println!("Generating Groth16 proof with Barretenberg...");
     println!("  This may take 30-60 seconds...");
+    println!("  NOTE: Large circuits may fail. Use UltraPlonk for production.");
 
     // Check if bb is installed
     let bb_check = Command::new("bb").arg("--version").output();
@@ -25,7 +29,8 @@ pub fn generate_groth16_proof(circuits_dir: &str) -> Result<Vec<u8>, String> {
         return Err(
             "Barretenberg CLI (bb) not found. Install it with:\n\
              curl -L https://raw.githubusercontent.com/AztecProtocol/aztec-packages/master/barretenberg/cpp/installation/install | bash\n\
-             bbup".to_string()
+             source ~/.zshrc (or ~/.bashrc)\n\
+             bbup -v 0.63.1".to_string()
         );
     }
 
@@ -39,6 +44,23 @@ pub fn generate_groth16_proof(circuits_dir: &str) -> Result<Vec<u8>, String> {
     }
     if !std::path::Path::new(&witness_path).exists() {
         return Err(format!("Witness file not found: {}", witness_path));
+    }
+
+    // Check circuit size
+    let circuit_size = std::fs::metadata(&circuit_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
+    if circuit_size > 50_000_000 {
+        return Err(format!(
+            "Circuit too large for Groth16 ({} MB). \n\
+             Groth16 has strict size limits. Your circuit is {} MB.\n\
+             Consider:\n\
+             1. Optimizing the circuit (reduce MAX_WALKS/MAX_STEPS)\n\
+             2. Using UltraPlonk backend instead (not yet implemented)\n\
+             3. Using --prove for witness generation only",
+            circuit_size / 1_000_000,
+            circuit_size / 1_000_000
+        ));
     }
 
     // Generate proof
@@ -57,7 +79,9 @@ pub fn generate_groth16_proof(circuits_dir: &str) -> Result<Vec<u8>, String> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         return Err(format!(
-            "bb prove failed:\nstdout: {}\nstderr: {}",
+            "bb prove failed:\nstdout: {}\nstderr: {}\n\n\
+             This is likely due to circuit size limits in Groth16.\n\
+             Try reducing MAX_WALKS and MAX_STEPS in circuits/src/main.nr",
             stdout, stderr
         ));
     }
