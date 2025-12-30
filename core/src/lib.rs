@@ -6,6 +6,9 @@ use alloc::vec::Vec;
 // Noir circuit integration
 pub mod noir;
 
+// Barretenberg integration for Groth16 proofs
+pub mod barretenberg;
+
 use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

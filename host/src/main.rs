@@ -8,6 +8,9 @@ use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, Binary
 // Noir integration
 use ror_core::noir::execute_noir_circuit;
 
+// Barretenberg integration for Groth16
+use ror_core::barretenberg::{generate_groth16_proof, generate_verifier_contract, encode_public_inputs_simple};
+
 // Risc0 imports (kept for backward compatibility if needed)
 // use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
 // use ror_core::ProofOutputs;
@@ -74,9 +77,13 @@ struct Cli {
     #[arg(long)]
     prove: bool,
 
-    /// Generate Groth16 proof for on-chain verification (requires x86 Linux + Docker)
+    /// Generate Groth16 proof for on-chain verification (requires Barretenberg)
     #[arg(long)]
     prove_groth16: bool,
+
+    /// Generate Solidity verifier contract (use with --prove-groth16)
+    #[arg(long)]
+    generate_verifier: bool,
 
     /// Verify an existing proof
     #[arg(long)]
@@ -285,9 +292,69 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Must provide --private-key or --generate-key".into());
     };
 
-    // Groth16 proof generation mode (TODO: implement with Barretenberg)
+    // Groth16 proof generation mode (for on-chain verification)
     if cli.prove_groth16 {
-        return Err("Groth16 proving not yet implemented for Noir. Use --prove for witness generation, then use Barretenberg for Groth16 conversion.".into());
+        println!("Generating on-chain verifiable proof...\n");
+
+        // Step 1: Generate witness via Noir
+        let (walks, steps, binary_image) = generate_noir_proof(&private_key)?;
+
+        // Step 2: Generate Groth16 proof via Barretenberg
+        let proof = generate_groth16_proof("circuits")
+            .map_err(|e| format!("Groth16 proof generation failed: {}", e))?;
+
+        // Step 3: Encode public inputs for Solidity
+        let binary_array: [u8; 256] = binary_image.data.as_slice().try_into()
+            .map_err(|_| "Binary image must be exactly 256 bytes")?;
+        let public_inputs = encode_public_inputs_simple(walks, steps, &binary_array);
+
+        // Save proof
+        let proof_path = cli.output.with_extension("groth16.proof");
+        fs::write(&proof_path, &proof)?;
+        println!("✓ Groth16 proof saved to: {} ({} bytes)",
+            proof_path.display(), proof.len());
+
+        // Save public inputs
+        let inputs_path = cli.output.with_extension("public_inputs");
+        fs::write(&inputs_path, &public_inputs)?;
+        println!("✓ Public inputs saved to: {} ({} bytes)",
+            inputs_path.display(), public_inputs.len());
+
+        // Optionally generate verifier contract
+        if cli.generate_verifier {
+            let verifier_path = "contracts/Verifier.sol";
+            // Create contracts directory if it doesn't exist
+            fs::create_dir_all("contracts")?;
+
+            generate_verifier_contract("circuits", verifier_path)
+                .map_err(|e| format!("Verifier generation failed: {}", e))?;
+
+            println!("✓ Solidity verifier contract generated!");
+            println!("  Deploy contracts/Verifier.sol to verify on-chain");
+        }
+
+        println!("\n📋 Next steps:");
+        println!("1. Deploy contracts/Verifier.sol to your network");
+        println!("2. Call verify() with:");
+        println!("   - proof: {}", proof_path.display());
+        println!("   - publicInputs: {}", inputs_path.display());
+        println!("\nSee ONCHAIN_VERIFICATION.md for details.");
+
+        // Still generate the image for visualization
+        let foreground = cli.color.to_pixel();
+        let background = cli.background.to_pixel();
+        let half_image = binary_to_rgb(&binary_image, foreground, background);
+
+        let mut full_image = mirror_half_to_full(&half_image, background);
+        if !cli.no_stamp {
+            add_corner_stamps(&mut full_image, &private_key,
+                cli.color.to_rgb(), cli.background.to_rgb(), cli.stamp_offset);
+        }
+        let final_image = upscale(&full_image, 8);
+        final_image.save(&cli.output)?;
+        println!("\n✓ Image saved to: {}", cli.output.display());
+
+        return Ok(());
     }
 
     // Noir proof generation mode
