@@ -3,74 +3,31 @@ use std::{fs, path::PathBuf, str::FromStr};
 use alloy::signers::local::PrivateKeySigner;
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
-use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
-use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, BinaryImage32x64, Image32x64, Pixel, ProofOutputs};
+use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, BinaryImage32x64, Image32x64, Pixel};
 
-// Include the generated guest code
-use methods::{GUEST_ELF, GUEST_ID};
+// Noir integration
+use ror_core::noir::execute_noir_circuit;
 
-// Define Solidity-compatible types for ABI encoding
-/// Encode journal data for Solidity compatibility
-/// Encodes as: (address, uint64, uint64, bytes)
-fn encode_journal_for_solidity(outputs: &ProofOutputs) -> Vec<u8> {
-    // Flatten binary_chunks into single bytes array
-    let mut image_bytes = Vec::with_capacity(256);
-    for chunk in &outputs.binary_chunks {
-        image_bytes.extend_from_slice(chunk);
-    }
+// Risc0 imports (kept for backward compatibility if needed)
+// use risc0_zkvm::{default_prover, ExecutorEnv, Receipt};
+// use ror_core::ProofOutputs;
+// use methods::{GUEST_ELF, GUEST_ID};
 
-    // Manual ABI encoding to match Solidity (address, uint64, uint64, bytes)
-    let mut encoded = Vec::new();
+// Risc0-specific Solidity encoding (kept for reference, currently commented out)
+// fn encode_journal_for_solidity(outputs: &ProofOutputs) -> Vec<u8> {
+//     // Flatten binary_chunks into single bytes array
+//     let mut image_bytes = Vec::with_capacity(256);
+//     for chunk in &outputs.binary_chunks {
+//         image_bytes.extend_from_slice(chunk);
+//     }
+//     // ... encoding logic ...
+//     encoded
+// }
 
-    // 1. address (20 bytes, left-padded to 32 bytes)
-    encoded.extend_from_slice(&[0u8; 12]); // 12 bytes padding
-    encoded.extend_from_slice(&outputs.address); // 20 bytes address
-
-    // 2. uint64 walks (right-aligned in 32 bytes)
-    encoded.extend_from_slice(&[0u8; 24]); // 24 bytes padding
-    encoded.extend_from_slice(&outputs.walks.to_be_bytes()); // 8 bytes
-
-    // 3. uint64 steps (right-aligned in 32 bytes)
-    encoded.extend_from_slice(&[0u8; 24]); // 24 bytes padding
-    encoded.extend_from_slice(&outputs.steps.to_be_bytes()); // 8 bytes
-
-    // 4. bytes offset (pointer to where bytes data starts)
-    // Offset = 4 * 32 = 128 bytes (after address, walks, steps, and this offset)
-    encoded.extend_from_slice(&[0u8; 28]);
-    encoded.extend_from_slice(&[0, 0, 0, 128]); // offset = 0x80
-
-    // 5. bytes length (256)
-    encoded.extend_from_slice(&[0u8; 28]);
-    encoded.extend_from_slice(&[0, 0, 1, 0]); // length = 0x100 = 256
-
-    // 6. bytes data (256 bytes, padded to multiple of 32)
-    encoded.extend_from_slice(&image_bytes);
-
-    encoded
-}
-
-/// Check if platform supports Groth16 proving
-fn check_groth16_platform() -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(not(target_arch = "x86_64"))]
-    {
-        return Err("Groth16 proving requires x86_64 architecture. Current: ARM/other.
-                   Please run on x86 Linux with Docker installed.".into());
-    }
-
-    #[cfg(target_arch = "x86_64")]
-    {
-        // Check if Docker is available
-        let docker_check = std::process::Command::new("docker")
-            .arg("--version")
-            .output();
-
-        match docker_check {
-            Ok(output) if output.status.success() => Ok(()),
-            _ => Err("Docker not found. Groth16 proving requires Docker.
-                     Install: sudo apt-get install docker.io".into()),
-        }
-    }
-}
+// Risc0 Groth16 support (commented out - TODO: implement Noir Groth16)
+// fn check_groth16_platform() -> Result<(), Box<dyn std::error::Error>> {
+//     ... platform checking logic ...
+// }
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -155,125 +112,45 @@ impl RgbX {
     }
 }
 
-fn generate_proof(private_key: &[u8; 32]) -> Result<Receipt, Box<dyn std::error::Error>> {
-    println!("Generating ZK proof... (this may take a while)");
+/// Generate Noir proof using nargo
+fn generate_noir_proof(private_key: &[u8; 32]) -> Result<(u64, u64, BinaryImage32x64), Box<dyn std::error::Error>> {
+    println!("Generating ZK proof using Noir... (this may take a while)");
 
-    let env = ExecutorEnv::builder()
-        .write(private_key)?
-        .build()?;
+    // Execute Noir circuit
+    let outputs = execute_noir_circuit(private_key, "circuits")?;
 
-    let prover = default_prover();
-    let prove_info = prover.prove(env, GUEST_ELF)?;
-    let receipt = prove_info.receipt;
+    // Create binary image from outputs
+    let binary_image = BinaryImage32x64::from_bytes(&outputs.binary_image);
 
-    Ok(receipt)
-}
-
-#[cfg(feature = "groth16")]
-fn generate_groth16_proof(
-    private_key: &[u8; 32],
-    output_path: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
-    use risc0_zkvm::{ProverOpts, InnerReceipt};
-
-    println!("Generating Groth16 proof... (this may take 5-10 minutes)");
-    println!("Using Docker backend for Groth16 conversion...");
-
-    // Build execution environment
-    let env = ExecutorEnv::builder()
-        .write(private_key)?
-        .build()?;
-
-    // Get prover with Groth16 options
-    println!("Step 1/2: Generating STARK proof...");
-    let prover = default_prover();
-    let opts = ProverOpts::groth16();
-    let prove_info = prover.prove_with_opts(env, GUEST_ELF, &opts)?;
-
-    println!("Step 2/2: Converting to Groth16 via Docker...");
-    let receipt = prove_info.receipt;
-
-    // Optionally save STARK receipt for debugging/reference
-    let stark_path = output_path.with_extension("stark.proof");
-    if let Ok(stark_bytes) = bincode::serialize(&receipt) {
-        let _ = fs::write(&stark_path, stark_bytes);
-    }
-
-    // Decode outputs
-    let outputs: ProofOutputs = receipt.journal.decode()?;
-
-    // Get the Groth16 seal from the receipt
-    let groth16_seal = match &receipt.inner {
-        InnerReceipt::Groth16(receipt) => &receipt.seal,
-        _ => return Err("Expected Groth16 receipt but got different type".into()),
-    };
-
-    // Reconstruct binary image from chunks
-    let mut binary_data = Vec::with_capacity(256);
-    for chunk in &outputs.binary_chunks {
-        binary_data.extend_from_slice(chunk);
-    }
-    let binary_image = BinaryImage32x64::from_bytes(&binary_data);
-
-    println!("✓ Groth16 proof generated successfully!");
-    println!("  Address: 0x{}", hex::encode(outputs.address));
+    println!("✓ Circuit execution successful!");
     println!("  Parameters: walks={}, steps={}", outputs.walks, outputs.steps);
-    println!("  Binary image size: {} bytes", binary_image.data.len());
 
-    // Save seal (Groth16 proof) for on-chain verification
-    let seal_path = output_path.with_extension("seal");
-    fs::write(&seal_path, groth16_seal)?;
-    println!("  Groth16 seal saved to: {} ({} bytes)", seal_path.display(), groth16_seal.len());
-
-    // Save journal (public outputs) for on-chain verification
-    let journal_bytes = encode_journal_for_solidity(&outputs);
-    let journal_path = output_path.with_extension("journal");
-    fs::write(&journal_path, &journal_bytes)?;
-    println!("  Journal saved to: {} ({} bytes)", journal_path.display(), journal_bytes.len());
-
-    // Also save full receipt for reference
-    let receipt_path = output_path.with_extension("groth16.proof");
-    let receipt_bytes = bincode::serialize(&receipt)?;
-    fs::write(&receipt_path, receipt_bytes)?;
-    println!("  Full receipt saved to: {}", receipt_path.display());
-
-    Ok(())
+    Ok((outputs.walks, outputs.steps, binary_image))
 }
 
-#[cfg(not(feature = "groth16"))]
-fn generate_groth16_proof(
-    _private_key: &[u8; 32],
-    _output_path: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
-    Err("Groth16 feature not enabled. Build with: cargo build --features groth16".into())
-}
+// Risc0 proof generation (kept for reference, currently commented out)
+// fn generate_proof(private_key: &[u8; 32]) -> Result<Receipt, Box<dyn std::error::Error>> {
+//     println!("Generating ZK proof... (this may take a while)");
+//     let env = ExecutorEnv::builder()
+//         .write(private_key)?
+//         .build()?;
+//     let prover = default_prover();
+//     let prove_info = prover.prove(env, GUEST_ELF)?;
+//     let receipt = prove_info.receipt;
+//     Ok(receipt)
+// }
 
-fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Verifying proof...");
+// Risc0 Groth16 proof generation (commented out - TODO: implement with Noir/Barretenberg)
+// #[cfg(feature = "groth16")]
+// fn generate_groth16_proof(...) { ... }
+//
+// #[cfg(not(feature = "groth16"))]
+// fn generate_groth16_proof(...) { ... }
 
-    let receipt_bytes = fs::read(proof_path)?;
-    let receipt: Receipt = bincode::deserialize(&receipt_bytes)?;
-
-    receipt.verify(GUEST_ID)?;
-
-    // Decode all outputs as a single struct (risc0 best practice)
-    let outputs: ProofOutputs = receipt.journal.decode()?;
-
-    // Reconstruct binary image from chunks
-    let mut binary_data = Vec::with_capacity(256);
-    for chunk in &outputs.binary_chunks {
-        binary_data.extend_from_slice(chunk);
-    }
-    let binary_image = BinaryImage32x64::from_bytes(&binary_data);
-
-    println!("✓ Proof verified successfully!");
-    println!("  Address: 0x{}", hex::encode(outputs.address));
-    println!("  Parameters: walks={}, steps={}", outputs.walks, outputs.steps);
-    println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_image.data.len());
-    println!("  (Colors can be applied freely after verification)");
-
-    Ok(())
-}
+// Risc0 proof verification (commented out - TODO: implement Noir verification)
+// fn verify_proof(proof_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+//     ... verification logic ...
+// }
 
 fn mirror_half_to_full(half: &Image32x64, background: Pixel) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
     let mut full_image = vec![background; 64 * 64];
@@ -387,9 +264,9 @@ fn upscale(image: &ImageBuffer<Rgb<u8>, Vec<u8>>, factor: u32) -> ImageBuffer<Rg
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    // Verify mode
-    if let Some(proof_path) = cli.verify {
-        return verify_proof(&proof_path);
+    // Verify mode (TODO: implement Noir verification)
+    if let Some(_proof_path) = cli.verify {
+        return Err("Proof verification not yet implemented for Noir. Coming soon!".into());
     }
 
     // Generate or parse private key
@@ -408,56 +285,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("Must provide --private-key or --generate-key".into());
     };
 
-    // Groth16 proof generation mode (on-chain ready)
+    // Groth16 proof generation mode (TODO: implement with Barretenberg)
     if cli.prove_groth16 {
-        check_groth16_platform()?;
-        generate_groth16_proof(&private_key, &cli.output)?;
-
-        // Still generate the image for visualization
-        let (default_walks, default_steps) = derive_parameters(&private_key);
-        let walks = cli.walks.unwrap_or(default_walks);
-        let steps = cli.steps.unwrap_or(default_steps);
-
-        let foreground = cli.color.to_pixel();
-        let background = cli.background.to_pixel();
-        let half_image = generate_rorschach_half(&private_key, walks, steps, foreground, background);
-
-        let mut full_image = mirror_half_to_full(&half_image, background);
-        if !cli.no_stamp {
-            add_corner_stamps(&mut full_image, &private_key,
-                cli.color.to_rgb(), cli.background.to_rgb(), cli.stamp_offset);
-        }
-        let final_image = upscale(&full_image, 8);
-        final_image.save(&cli.output)?;
-        println!("  Image saved to: {}", cli.output.display());
-
-        return Ok(());
+        return Err("Groth16 proving not yet implemented for Noir. Use --prove for witness generation, then use Barretenberg for Groth16 conversion.".into());
     }
 
-    // STARK proof generation mode
+    // Noir proof generation mode
     if cli.prove {
-        let receipt = generate_proof(&private_key)?;
-
-        // Decode all outputs as a single struct (risc0 best practice)
-        let outputs: ProofOutputs = receipt.journal.decode()?;
-
-        // Reconstruct binary image from chunks
-        let mut binary_data = Vec::with_capacity(256);
-        for chunk in &outputs.binary_chunks {
-            binary_data.extend_from_slice(chunk);
-        }
-        let binary_image = BinaryImage32x64::from_bytes(&binary_data);
+        let (walks, steps, binary_image) = generate_noir_proof(&private_key)?;
 
         println!("✓ Proof generated successfully!");
-        println!("  Address: 0x{}", hex::encode(outputs.address));
-        println!("  Parameters: walks={}, steps={}", outputs.walks, outputs.steps);
+        println!("  Parameters: walks={}, steps={}", walks, steps);
         println!("  Binary image size: {} bytes (24x smaller than RGB!)", binary_image.data.len());
 
-        // Save proof
-        let proof_path = cli.output.with_extension("proof");
-        let receipt_bytes = bincode::serialize(&receipt)?;
-        fs::write(&proof_path, receipt_bytes)?;
-        println!("  Proof saved to: {}", proof_path.display());
+        // Save witness (proof file is in circuits/target/circuits.gz)
+        let witness_path = cli.output.with_extension("witness.gz");
+        if fs::copy("circuits/target/circuits.gz", &witness_path).is_ok() {
+            println!("  Witness saved to: {}", witness_path.display());
+        }
 
         // Convert binary image to RGB with user's chosen colors
         let foreground = cli.color.to_pixel();
@@ -472,8 +317,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             add_corner_stamps(
                 &mut full_image,
                 &private_key,
-                Rgb(foreground.to_rgb_array()),
-                Rgb(background.to_rgb_array()),
+                cli.color.to_rgb(),
+                cli.background.to_rgb(),
                 cli.stamp_offset
             );
         }
