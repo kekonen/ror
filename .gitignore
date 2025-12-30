@@ -2,3 +2,4 @@
 xxx
 /*.png
 contracts/foundry/.env
+/solana-program/target

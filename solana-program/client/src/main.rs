@@ -2,7 +2,7 @@
 //!
 //! Submits Groth16 proofs to Solana for verification
 
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize, to_vec as borsh_to_vec};
 use clap::{Parser, Subcommand};
 use solana_client::rpc_client::RpcClient;
 use solana_sdk::{
@@ -16,6 +16,19 @@ use solana_sdk::{
 use std::fs;
 use std::path::PathBuf;
 use std::str::FromStr;
+
+/// Instruction data matching the program
+/// Must match solana-program/program/src/lib.rs exactly
+#[derive(BorshSerialize, BorshDeserialize)]
+enum RorschachInstruction {
+    VerifyProof {
+        proof: Vec<u8>,
+        public_inputs: Vec<u8>,
+    },
+    InitializeVerifyingKey {
+        verifying_key: Vec<u8>,
+    },
+}
 
 #[derive(Parser)]
 #[command(name = "rorschach-client")]
@@ -70,18 +83,6 @@ enum Commands {
         /// Path to compiled program .so file
         #[arg(long)]
         program_path: PathBuf,
-    },
-}
-
-/// Instruction data matching the program
-#[derive(BorshSerialize)]
-enum RorschachInstruction {
-    VerifyProof {
-        proof: Vec<u8>,
-        public_inputs: Vec<u8>,
-    },
-    InitializeVerifyingKey {
-        verifying_key: Vec<u8>,
     },
 }
 
@@ -176,10 +177,9 @@ fn init_verifying_key(
             AccountMeta::new_readonly(payer.pubkey(), true),
             AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
         ],
-        data: RorschachInstruction::InitializeVerifyingKey {
+        data: borsh_to_vec(&RorschachInstruction::InitializeVerifyingKey {
             verifying_key: vk_data,
-        }
-        .try_to_vec()?,
+        })?,
     };
 
     // Send transaction
@@ -252,11 +252,10 @@ fn verify_proof(
             AccountMeta::new_readonly(solana_sdk::system_program::id(), false),
             AccountMeta::new_readonly(solana_sdk::sysvar::instructions::id(), false),
         ],
-        data: RorschachInstruction::VerifyProof {
+        data: borsh_to_vec(&RorschachInstruction::VerifyProof {
             proof,
             public_inputs,
-        }
-        .try_to_vec()?,
+        })?,
     };
 
     // Send transaction
