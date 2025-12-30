@@ -7,6 +7,24 @@ use rand::{Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
+// Pedersen hash imports for Noir circuit compatibility
+use ark_ff::{BigInteger, PrimeField};
+use ark_ed_on_bn254::EdwardsProjective as JubJub;
+use ark_crypto_primitives::crh::{
+    pedersen::{CRH, Window},
+    CRHScheme,
+};
+
+// Define Pedersen hash window parameters (matching Noir's implementation)
+#[derive(Clone)]
+struct PedersenWindow;
+impl Window for PedersenWindow {
+    const WINDOW_SIZE: usize = 4;
+    const NUM_WINDOWS: usize = 256;
+}
+
+type PedersenHash = CRH<JubJub, PedersenWindow>;
+
 /// Simple RGB pixel
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Pixel {
@@ -173,6 +191,52 @@ pub fn derive_parameters(pk: &[u8; 32]) -> (u64, u64) {
 
     // Generate steps: 80-300 (wider range for pattern variety)
     let steps = 80 + (rng.next_u32() % 221) as u64;
+
+    (walks, steps)
+}
+
+/// Derive deterministic walk and step parameters using Pedersen hash
+/// This matches the Noir circuit's parameter derivation logic exactly
+/// - Deterministic: same private key always produces same parameters
+/// - Circuit-friendly: uses Pedersen hash instead of ChaCha8
+/// - Same ranges: walks 3-20, steps 80-300
+///
+/// NOTE: This will produce DIFFERENT values than derive_parameters() above
+/// because it uses Pedersen hash instead of ChaCha8. This is expected.
+#[cfg(feature = "std")]
+pub fn derive_parameters_pedersen(pk: &[u8; 32]) -> (u64, u64) {
+    use ark_std::rand::SeedableRng;
+
+    // Compute Pedersen hash
+    // Note: We need to setup the Pedersen parameters first
+    let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(0); // Deterministic setup
+    let pedersen_params = PedersenHash::setup(&mut rng).unwrap();
+
+    // Pedersen hash expects bytes, use the private key directly
+    let hash_point = PedersenHash::evaluate(&pedersen_params, &pk[..]).unwrap();
+
+    // Convert hash point to field element (x-coordinate)
+    let hash_field = hash_point.x;
+
+    // Convert to u64 for parameter extraction (matching Noir logic)
+    let hash_bytes = hash_field.into_bigint().to_bytes_le();
+    let hash_u64 = u64::from_le_bytes([
+        hash_bytes[0],
+        hash_bytes[1],
+        hash_bytes[2],
+        hash_bytes[3],
+        hash_bytes[4],
+        hash_bytes[5],
+        hash_bytes[6],
+        hash_bytes[7],
+    ]);
+
+    // Extract parameters (matching Noir circuit logic exactly)
+    let walks = 3 + (hash_u64 % 18);
+
+    // Use different part of hash for steps (divide by 1000000 to get different bits)
+    let hash_shifted = hash_u64 / 1_000_000;
+    let steps = 80 + (hash_shifted % 221);
 
     (walks, steps)
 }

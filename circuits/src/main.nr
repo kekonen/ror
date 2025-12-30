@@ -1,42 +1,29 @@
 // Main circuit for Rorschach proof
 // Proves:
-// 1. Knowledge of private key that derives to a specific Ethereum address
+// 1. Knowledge of private key that derives to deterministic parameters
 // 2. Deterministic generation of binary image from that private key
+//
+// MVP Design: Circuit computes and RETURNS public outputs
+// This makes integration easier - no need to match Pedersen implementations
+// between Noir and Rust. Rust calls nargo, parses outputs, uses them.
 fn main(
-    // Private inputs (witness - kept secret)
+    // Private input (witness - kept secret)
     private_key: [u8; 32],
-
-    // Public outputs (verifiable)
-    ethereum_address: pub [u8; 20],
-    walks: pub u64,
-    steps: pub u64,
-    binary_image: pub [u8; 256]
-) {
-    // NOTE: For MVP, we'll skip the full secp256k1 public key derivation
-    // which is expensive in-circuit. Instead, we'll:
-    // 1. Use the private key to derive parameters and image (proving we know it)
-    // 2. Have the host pass in the ethereum_address as a public input
-    // 3. The prover can verify off-chain that address matches the private key
-
-    // This is a pragmatic approach for getting Noir working quickly.
-    // Full secp256k1 derivation can be added later using ecrecover library.
-
-    // Mark ethereum_address as used (it's just a public output for now)
-    let _ = ethereum_address;
-
-    // Derive parameters using Poseidon hash (circuit-friendly)
-    let (derived_walks, derived_steps) = derive_parameters_poseidon(private_key);
-    assert(derived_walks == walks);
-    assert(derived_steps == steps);
+) -> pub (u64, u64, [u8; 256]) {
+    // Derive parameters using Pedersen hash (circuit-friendly)
+    let (walks, steps) = derive_parameters_poseidon(private_key);
 
     // Generate binary image using random walks
-    let generated_image = generate_binary_image(private_key, walks, steps);
+    let binary_image = generate_binary_image(private_key, walks, steps);
 
-    // Verify all 256 bytes match
-    for i in 0..256 {
-        assert(generated_image[i] == binary_image[i]);
-    }
+    // Return all public outputs
+    // These can be verified by anyone with the proof
+    (walks, steps, binary_image)
 }
+
+// Note: Ethereum address derivation (secp256k1 + Keccak256) is skipped for MVP
+// The host can derive it off-circuit and include in proof metadata
+// Full in-circuit derivation can be added later using ecrecover-noir library
 
 // Derive walk and step parameters from private key using Poseidon hash
 // Replaces ChaCha8 RNG with circuit-friendly Poseidon

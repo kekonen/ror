@@ -1,0 +1,11 @@
+[package]
+name = "test-pedersen"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "test_pedersen"
+path = "../test_pedersen.rs"
+
+[dependencies]
+ror-core = { path = "../core" }
