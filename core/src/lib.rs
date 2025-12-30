@@ -96,7 +96,7 @@ impl Image32x64 {
 /// This is 24x smaller than RGB representation!
 #[derive(Clone)]
 pub struct BinaryImage32x64 {
-    // Back to Vec for simplicity - we'll use risc0's bytes encoding
+    // Vec<u8> for flexible byte encoding (Noir uses fixed [u8; 256])
     pub data: Vec<u8>,
 }
 
