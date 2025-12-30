@@ -3,7 +3,7 @@ use std::{fs, path::PathBuf, str::FromStr};
 use alloy::signers::local::PrivateKeySigner;
 use clap::Parser;
 use image::{ImageBuffer, Rgb};
-use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, BinaryImage32x64, Image32x64, Pixel};
+use ror_core::{binary_to_rgb, derive_parameters, generate_rorschach_half, generate_rorschach_binary, BinaryImage32x64, Image32x64, Pixel};
 
 // Noir integration
 use ror_core::noir::execute_noir_circuit;
@@ -402,22 +402,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Normal generation mode (without proof)
-    let (default_walks, default_steps) = derive_parameters(&private_key);
-    let walks = cli.walks.unwrap_or(default_walks);
-    let steps = cli.steps.unwrap_or(default_steps);
+    // To ensure consistency with proof mode, we use Noir circuit for everything
+    // This ensures the same private key produces IDENTICAL images in both modes
+    let (walks, steps, binary_image) = if cli.walks.is_none() && cli.steps.is_none() {
+        // Use Noir circuit to generate the canonical image
+        let outputs = execute_noir_circuit(&private_key, "circuits")?;
+        let binary = BinaryImage32x64::from_bytes(&outputs.binary_image);
 
-    if cli.debug > 0 {
-        println!("Using walks={}, steps={}", walks, steps);
-        if cli.walks.is_none() && cli.steps.is_none() {
-            println!("(derived from private key)");
+        if cli.debug > 0 {
+            println!("Using walks={}, steps={}", outputs.walks, outputs.steps);
+            println!("(generated via Noir circuit - matches proof mode)");
         }
-    }
+
+        (outputs.walks, outputs.steps, binary)
+    } else {
+        // If user manually specifies parameters, use Rust generation
+        let walks = cli.walks.unwrap_or_else(|| derive_parameters(&private_key).0);
+        let steps = cli.steps.unwrap_or_else(|| derive_parameters(&private_key).1);
+
+        if cli.debug > 0 {
+            println!("Using walks={}, steps={} (custom parameters)", walks, steps);
+        }
+
+        let binary = generate_rorschach_binary(&private_key, walks, steps);
+        (walks, steps, binary)
+    };
 
     let foreground = cli.color.to_pixel();
     let background = cli.background.to_pixel();
 
-    // Generate half-canvas
-    let half_image = generate_rorschach_half(&private_key, walks, steps, foreground, background);
+    // Convert binary to RGB with user's chosen colors
+    let half_image = binary_to_rgb(&binary_image, foreground, background);
 
     // Mirror to full 64×64
     let mut full_image = mirror_half_to_full(&half_image, background);
