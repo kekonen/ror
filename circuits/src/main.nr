@@ -88,8 +88,8 @@ fn generate_binary_image(pk: [u8; 32], walks: u64, steps: u64) -> [u8; 256] {
     }
 
     // Perform random walks (note: walks must be bounded at compile time)
-    // Reduced for Groth16 compatibility - aggressive reduction for bb Groth16 limits
-    let MAX_WALKS: u64 = 3;
+    // Extremely reduced for bb Groth16/witness limits
+    let MAX_WALKS: u64 = 2;
     for walk_idx in 0..MAX_WALKS {
         // Only execute if within actual walks count
         let should_walk = walk_idx < walks;
@@ -113,8 +113,8 @@ fn generate_binary_image(pk: [u8; 32], walks: u64, steps: u64) -> [u8; 256] {
             set_binary_pixel(&mut image_bytes, cursor_x, cursor_y, VIRTUAL_WIDTH, PHYSICAL_WIDTH);
 
             // Random walk steps (bounded at compile time)
-            // Reduced for Groth16 compatibility - aggressive reduction for bb Groth16 limits
-            let MAX_STEPS: u64 = 40;
+            // Extremely reduced for bb Groth16/witness limits
+            let MAX_STEPS: u64 = 20;
             for step_idx in 0..MAX_STEPS {
                 let should_step = step_idx < steps;
 

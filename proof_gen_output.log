@@ -1,0 +1,24 @@
+=== Generating ZK Proof ===
+Private key: 0x1111111111111111111111111111111111111111111111111111111111111111
+Output file: proof_test.png
+Proof will be saved to: proof_test.proof
+
+This will take 5-15 minutes depending on your CPU...
+Press Ctrl+C to cancel
+
+Starting proof generation at Fri Dec 26 18:59:53 CET 2025
+---
+   Compiling methods v0.1.0 (/Users/daniil/code/side/ror/methods)
+   Compiling ror v0.1.0 (/Users/daniil/code/side/ror/host)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.90s
+     Running `target/debug/ror --private-key 0x1111111111111111111111111111111111111111111111111111111111111111 --prove --output proof_test.png`
+Generating ZK proof... (this may take a while)
+./generate_proof.sh: line 28:  1427 Bus error: 10           cargo run --bin ror -- --private-key "$PRIVATE_KEY" --prove --output "$OUTPUT_FILE"
+
+real	10m32.953s
+user	106m57.216s
+sys	0m29.750s
+---
+Finished at Fri Dec 26 19:10:26 CET 2025
+
+✗ Proof generation failed with exit code: 138

@@ -3,3 +3,4 @@ xxx
 /*.png
 contracts/foundry/.env
 /solana-program/target
+circom_circuits/node_modules

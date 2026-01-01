@@ -1,0 +1,5 @@
+   Compiling methods v0.1.0 (/Users/daniil/code/side/ror/methods)
+   Compiling ror v0.1.0 (/Users/daniil/code/side/ror/host)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.85s
+     Running `target/debug/ror --private-key 0x1111111111111111111111111111111111111111111111111111111111111111 --prove --output quick_test.png`
+Generating ZK proof... (this may take a while)
